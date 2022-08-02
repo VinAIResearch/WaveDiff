@@ -494,6 +494,8 @@ if __name__ == '__main__':
                             help='beta_max for diffusion')
     
     
+    parser.add_argument('--patch_size', type=int, default=1,
+                            help='Patchify image into non-overlapped patches')
     parser.add_argument('--num_channels_dae', type=int, default=128,
                             help='number of initial channels in denosing model')
     parser.add_argument('--n_mlp', type=int, default=3,
