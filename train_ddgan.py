@@ -202,7 +202,7 @@ def train(rank, gpu, args):
     nz = args.nz #latent dimension
     
     if args.dataset == 'cifar10':
-        dataset = CIFAR10('./data', train=True, transform=transforms.Compose([
+        dataset = CIFAR10(args.datadir, train=True, transform=transforms.Compose([
                         transforms.Resize(32),
                         transforms.RandomHorizontalFlip(),
                         transforms.ToTensor(),
@@ -211,7 +211,7 @@ def train(rank, gpu, args):
     
     elif args.dataset == 'stackmnist':
         train_transform, valid_transform = _data_transforms_stacked_mnist()
-        dataset = StackedMNIST(root='./data', train=True, download=False, transform=train_transform)
+        dataset = StackedMNIST(root=args.datadir, train=True, download=False, transform=train_transform)
         
     elif args.dataset == 'lsun':
         
@@ -223,7 +223,7 @@ def train(rank, gpu, args):
                         transforms.Normalize((0.5,0.5,0.5), (0.5,0.5,0.5))
                     ])
 
-        train_data = LSUN(root='/datasets/LSUN/', classes=['church_outdoor_train'], transform=train_transform)
+        train_data = LSUN(root=args.datadir, classes=['church_outdoor_train'], transform=train_transform)
         subset = list(range(0, 120000))
         dataset = torch.utils.data.Subset(train_data, subset)
       
@@ -235,7 +235,7 @@ def train(rank, gpu, args):
                 transforms.ToTensor(),
                 transforms.Normalize((0.5,0.5,0.5), (0.5,0.5,0.5))
             ])
-        dataset = LMDBDataset(root='/datasets/celeba-lmdb/', name='celeba', train=True, transform=train_transform)
+        dataset = LMDBDataset(root=args.datadir, name='celeba', train=True, transform=train_transform)
       
     
     
@@ -463,7 +463,7 @@ def train(rank, gpu, args):
 def init_processes(rank, size, fn, args):
     """ Initialize the distributed environment. """
     os.environ['MASTER_ADDR'] = args.master_address
-    os.environ['MASTER_PORT'] = '6020'
+    os.environ['MASTER_PORT'] = args.master_port
     torch.cuda.set_device(args.local_rank)
     gpu = args.local_rank
     dist.init_process_group(backend='nccl', init_method='env://', rank=rank, world_size=size)
@@ -536,6 +536,7 @@ if __name__ == '__main__':
     #geenrator and training
     parser.add_argument('--exp', default='experiment_cifar_default', help='name of experiment')
     parser.add_argument('--dataset', default='cifar10', help='name of dataset')
+    parser.add_argument('--datadir', default='./data')
     parser.add_argument('--nz', type=int, default=100)
     parser.add_argument('--num_timesteps', type=int, default=4)
 
@@ -576,6 +577,8 @@ if __name__ == '__main__':
                         help='rank of process in the node')
     parser.add_argument('--master_address', type=str, default='127.0.0.1',
                         help='address for master')
+    parser.add_argument('--master_port', type=str, default='6002',
+                        help='port for master')
 
    
     args = parser.parse_args()

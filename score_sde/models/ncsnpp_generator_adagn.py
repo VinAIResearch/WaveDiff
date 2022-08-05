@@ -69,8 +69,8 @@ class NCSNpp(nn.Module):
 		self.z_emb_dim = z_emb_dim = config.z_emb_dim
 
 		self.patch_size = config.patch_size
-		assert config.image_size // self.patch_size
-
+		assert config.image_size % self.patch_size == 0
+		
 		self.nf = nf = config.num_channels_dae
 		ch_mult = config.ch_mult
 		self.num_res_blocks = num_res_blocks = config.num_res_blocks
@@ -78,7 +78,7 @@ class NCSNpp(nn.Module):
 		dropout = config.dropout
 		resamp_with_conv = config.resamp_with_conv
 		self.num_resolutions = num_resolutions = len(ch_mult)
-		self.all_resolutions = all_resolutions = [config.image_size // (2 ** i) for i in range(num_resolutions)]
+		self.all_resolutions = all_resolutions = [(config.image_size // self.patch_size) // (2 ** i) for i in range(num_resolutions)]
 
 		self.conditional = conditional = config.conditional  # noise-conditional
 		fir = config.fir
@@ -102,7 +102,7 @@ class NCSNpp(nn.Module):
 			#assert config.training.continuous, "Fourier features are only used for continuous training."
 
 			modules.append(layerspp.GaussianFourierProjection(
-			embedding_size=nf, scale=config.fourier_scale
+				embedding_size=nf, scale=config.fourier_scale
 			))
 			embed_dim = 2 * nf
 
@@ -121,11 +121,11 @@ class NCSNpp(nn.Module):
 			nn.init.zeros_(modules[-1].bias)
 
 		AttnBlock = functools.partial(layerspp.AttnBlockpp,
-										init_scale=init_scale,
-										skip_rescale=skip_rescale)
+									init_scale=init_scale,
+									skip_rescale=skip_rescale)
 
 		Upsample = functools.partial(layerspp.Upsample,
-										with_conv=resamp_with_conv, fir=fir, fir_kernel=fir_kernel)
+									with_conv=resamp_with_conv, fir=fir, fir_kernel=fir_kernel)
 
 		if progressive == 'output_skip':
 			self.pyramid_upsample = layerspp.Upsample(fir=fir, fir_kernel=fir_kernel, with_conv=False)
@@ -134,7 +134,7 @@ class NCSNpp(nn.Module):
 												fir=fir, fir_kernel=fir_kernel, with_conv=True)
 
 		Downsample = functools.partial(layerspp.Downsample,
-										with_conv=resamp_with_conv, fir=fir, fir_kernel=fir_kernel)
+									with_conv=resamp_with_conv, fir=fir, fir_kernel=fir_kernel)
 
 		if progressive_input == 'input_skip':
 			self.pyramid_downsample = layerspp.Downsample(fir=fir, fir_kernel=fir_kernel, with_conv=False)
@@ -177,7 +177,7 @@ class NCSNpp(nn.Module):
 
 		# Downsampling block
 
-		channels = config.num_channels * self.patch_size * self.patch_size
+		channels = config.num_channels * self.patch_size**2
 		if progressive_input != 'none':
 			input_pyramid_ch = channels
 
@@ -211,7 +211,7 @@ class NCSNpp(nn.Module):
 					modules.append(pyramid_downsample(in_ch=input_pyramid_ch, out_ch=in_ch))
 					input_pyramid_ch = in_ch
 
-			hs_c.append(in_ch)
+				hs_c.append(in_ch)
 
 		in_ch = hs_c[-1]
 		modules.append(ResnetBlock(in_ch=in_ch))
@@ -224,7 +224,7 @@ class NCSNpp(nn.Module):
 			for i_block in range(num_res_blocks + 1):
 				out_ch = nf * ch_mult[i_level]
 				modules.append(ResnetBlock(in_ch=in_ch + hs_c.pop(),
-											out_ch=out_ch))
+										out_ch=out_ch))
 				in_ch = out_ch
 
 			if all_resolutions[i_level] in attn_resolutions:
@@ -270,21 +270,20 @@ class NCSNpp(nn.Module):
 			modules.append(conv3x3(in_ch, channels, init_scale=init_scale))
 
 		self.all_modules = nn.ModuleList(modules)
-
-
+		
+		
 		mapping_layers = [PixelNorm(),
-							dense(config.nz, z_emb_dim),
-							self.act,]
+						dense(config.nz, z_emb_dim),
+						self.act,]
 		for _ in range(config.n_mlp):
 			mapping_layers.append(dense(z_emb_dim, z_emb_dim))
 			mapping_layers.append(self.act)
 		self.z_transform = nn.Sequential(*mapping_layers)
-
+		
 
 	def forward(self, x, time_cond, z):
 		# patchify
 		x = rearrange(x, "n c (h p1) (w p2) -> n (p1 p2 c) h w", p1=self.patch_size, p2=self.patch_size)
-		
 		# timestep/noise_level embedding; only for continuous training
 		zemb = self.z_transform(z)
 		modules = self.all_modules
@@ -430,9 +429,10 @@ class NCSNpp(nn.Module):
 			m_idx += 1
 
 		assert m_idx == len(modules)
-		
-		if not self.not_use_tanh:
+		# unpatchify
+		h = rearrange(h, "n (c p1 p2) h w -> n c (h p1) (w p2)", p1=self.patch_size, p2=self.patch_size)
 
+		if not self.not_use_tanh:
 			return torch.tanh(h)
 		else:
 			return h
