@@ -57,6 +57,14 @@ from PIL import Image
 from scipy import linalg
 from torch.nn.functional import adaptive_avg_pool2d
 
+# -------------------- Address Too many open files error -----------------------
+# Ref: https://github.com/pytorch/pytorch/issues/11201
+import torch.multiprocessing
+torch.multiprocessing.set_sharing_strategy('file_system')
+
+def set_worker_sharing_strategy(worker_id: int) -> None:
+    torch.multiprocessing.set_sharing_strategy('file_system')
+
 try:
     from tqdm import tqdm
 except ImportError:
@@ -140,7 +148,8 @@ def get_activations(files, model, batch_size=50, dims=2048, device='cpu', resize
                                              batch_size=batch_size,
                                              shuffle=False,
                                              drop_last=False,
-                                             num_workers=cpu_count())
+                                             num_workers=4, # cpu_count(),
+											 worker_init_fn=set_worker_sharing_strategy,)
 
     pred_arr = np.empty((len(files), dims))
 
