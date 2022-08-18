@@ -1,5 +1,5 @@
 #!/bin/sh
-#SBATCH --job-name=dg # create a short name for your job
+#SBATCH --job-name=pdg # create a short name for your job
 #SBATCH --output=/lustre/scratch/client/vinai/users/haopt12/DiffusionGAN/slurm_%A.out # create a output file
 #SBATCH --error=/lustre/scratch/client/vinai/users/haopt12/DiffusionGAN/slurm_%A.err # create a error file
 #SBATCH --partition=research # choose partition
@@ -17,7 +17,7 @@
 set -x
 set -e
 
-export MASTER_PORT=6111
+export MASTER_PORT=6113
 export WORLD_SIZE=1                                         
                                                                                               
 export SLURM_JOB_NODELIST=$(scontrol show hostnames $SLURM_JOB_NODELIST | tr '\n' ' ')
@@ -36,13 +36,20 @@ export PYTHONFAULTHANDLER=1
 export PYTHONPATH=$(pwd):$PYTHONPATH
 
 # python -u -m torch.distributed.run --master_port=$MASTER_PORT --master_addr=$MASTER_ADDRESS --nproc_per_node=1 \
-# python train_ddgan.py --dataset cifar10 --exp ddgan_cifar10_exp1 --num_channels 3 --num_channels_dae 128 --num_timesteps 4 \
+# python train_ddgan.py --dataset cifar10 --exp ddgan_p2_cifar10_glo_local_exp1 --num_channels 3 --num_channels_dae 128 --num_timesteps 4 \
 #     --num_res_blocks 2 --batch_size 64 --num_epoch 1800 --ngf 64 --nz 100 --z_emb_dim 256 --n_mlp 4 --embedding_type positional \
 #     --use_ema --ema_decay 0.9999 --r1_gamma 0.02 --lr_d 1.25e-4 --lr_g 1.6e-4 --lazy_reg 15 \
-#     --ch_mult 1 2 2 2 --save_content --datadir ../data/cifar-10 --patch_size 1 \
+#     --ch_mult 1 2 2 2 --save_content --datadir ../data/cifar-10 --patch_size 2 \
+#     --use_local_loss \
 #     --master_address $MASTER_ADDRESS --master_port $MASTER_PORT --num_process_per_node 1
 
+python train_ddgan.py --dataset celeba_256 --image_size 256 --exp ddgan_p4_celebahq_exp1 --num_channels 3 --num_channels_dae 64 --ch_mult 1 1 2 2 4 4 --num_timesteps 2 \
+    --num_res_blocks 2 --batch_size 128 --num_epoch 800 --ngf 64 --embedding_type positional --use_ema --r1_gamma 2. \
+    --z_emb_dim 256 --lr_d 1e-4 --lr_g 2e-4 --lazy_reg 10  --save_content --datadir data/celeba/celeba-lmdb/ \
+    --patch_size 4 --use_local_loss \
+    --master_address $MASTER_ADDRESS --master_port $MASTER_PORT --num_process_per_node 1
 
-python test_ddgan.py --dataset cifar10 --exp ddgan_p4_cifar10_exp1 --num_channels 3 --num_channels_dae 128 --num_timesteps 4 \
-	--num_res_blocks 2 --nz 100 --z_emb_dim 256 --n_mlp 4 --ch_mult 1 2 2 2 --epoch_id 1200 \
-	--patch_size 2 --compute_fid --real_img_dir pytorch_fid/cifar10_train_stat.npy 
+
+# python test_ddgan.py --dataset cifar10 --exp ddgan_p2_cifar10_exp1 --num_channels 3 --num_channels_dae 128 --num_timesteps 4 \
+# 	--num_res_blocks 2 --nz 100 --z_emb_dim 256 --n_mlp 4 --ch_mult 1 2 2 2 --epoch_id 1200 \
+# 	--patch_size 2 --compute_fid --real_img_dir pytorch_fid/cifar10_train_stat.npy 

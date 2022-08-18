@@ -97,10 +97,12 @@ class DownConvBlock(nn.Module):
 class Discriminator_small(nn.Module):
 	"""A time-dependent discriminator for small images (CIFAR10, StackMNIST)."""
 
-	def __init__(self, nc = 3, ngf = 64, t_emb_dim = 128, act=nn.LeakyReLU(0.2), patch_size=1):
+	def __init__(self, nc = 3, ngf = 64, t_emb_dim = 128, act=nn.LeakyReLU(0.2), patch_size=1, use_local_loss=False):
 		super().__init__()
 		self.patch_size = patch_size
+		self.use_local_loss = use_local_loss
 		nc = nc * self.patch_size * self.patch_size
+		print(nc, self.patch_size)
 		# Gaussian random feature embedding layer for time
 		self.act = act
 		
@@ -128,25 +130,27 @@ class Discriminator_small(nn.Module):
 		
 		self.final_conv = conv2d(ngf*8 + 1, ngf*8, 3, padding=1, init_scale=0.)
 		self.end_linear = dense(ngf*8, 1)
+		if use_local_loss:
+			self.local_end_linear = dense(ngf*8,1)
 		
 		self.stddev_group = 4
 		self.stddev_feat = 1
-    
-        
+
+		
 	def forward(self, x, t, x_t):
 		x = rearrange(x, "n c (h p1) (w p2) -> n (c p1 p2) h w", p1=self.patch_size, p2=self.patch_size)
 		x_t = rearrange(x_t, "n c (h p1) (w p2) -> n (c p1 p2) h w", p1=self.patch_size, p2=self.patch_size)
 		t_embed = self.act(self.t_embed(t))  
-	
+
 		input_x = torch.cat((x, x_t), dim = 1)
 		
 		h0 = self.start_conv(input_x)
 		h1 = self.conv1(h0,t_embed)    
 		
 		h2 = self.conv2(h1,t_embed)   
-	
+
 		h3 = self.conv3(h2,t_embed)
-	
+
 		
 		out = self.conv4(h3,t_embed)
 		
@@ -162,12 +166,17 @@ class Discriminator_small(nn.Module):
 		
 		out = self.final_conv(out)
 		out = self.act(out)
-	
-		if self.patch_size == 1:
-			out = out.view(out.shape[0], out.shape[1], -1).sum(2)
-		else:
-			out = out.view(out.shape[0], out.shape[1], -1).permute(0,2,1)
-		out = self.end_linear(out)
+
+		# if self.patch_size == 1:
+		# 	out = out.view(out.shape[0], out.shape[1], -1).sum(2)
+		# else:
+		# 	out = out.view(out.shape[0], out.shape[1], -1).permute(0,2,1)
+		out = out.view(out.shape[0], out.shape[1], -1)
+		t = out
+		out = self.end_linear(out.sum(2))
+		if self.use_local_loss:
+			out2 = self.local_end_linear(t.permute(0,2,1))
+			return (out, out2)
 		
 		return out
 
@@ -175,9 +184,11 @@ class Discriminator_small(nn.Module):
 class Discriminator_large(nn.Module):
 	"""A time-dependent discriminator for large images (CelebA, LSUN)."""
 
-	def __init__(self, nc = 1, ngf = 32, t_emb_dim = 128, act=nn.LeakyReLU(0.2), patch_size=1):
+	def __init__(self, nc = 1, ngf = 32, t_emb_dim = 128, act=nn.LeakyReLU(0.2), patch_size=1, use_local_loss=False):
 		super().__init__()
 		self.patch_size = patch_size
+		self.use_local_loss = use_local_loss
+
 		nc = nc * self.patch_size * self.patch_size
 		# Gaussian random feature embedding layer for time
 		self.act = act
@@ -201,9 +212,11 @@ class Discriminator_large(nn.Module):
 		self.conv5 = DownConvBlock(ngf*8, ngf*8, t_emb_dim = t_emb_dim, downsample=True,act=act)
 		self.conv6 = DownConvBlock(ngf*8, ngf*8, t_emb_dim = t_emb_dim, downsample=True,act=act)
 
-	
+
 		self.final_conv = conv2d(ngf*8 + 1, ngf*8, 3,padding=1)
 		self.end_linear = dense(ngf*8, 1)
+		if use_local_loss:
+			self.local_end_linear = dense(ngf*8,1)
 		
 		self.stddev_group = 4
 		self.stddev_feat = 1
@@ -218,13 +231,13 @@ class Discriminator_large(nn.Module):
 		
 		h = self.start_conv(input_x)
 		h = self.conv1(h,t_embed)    
-	
+
 		h = self.conv2(h,t_embed)
-	
+
 		h = self.conv3(h,t_embed)
 		h = self.conv4(h,t_embed)
 		h = self.conv5(h,t_embed)
-	
+
 		
 		out = self.conv6(h,t_embed)
 		
@@ -241,11 +254,17 @@ class Discriminator_large(nn.Module):
 		out = self.final_conv(out)
 		out = self.act(out)
 		
-		if self.patch_size == 1:
-			out = out.view(out.shape[0], out.shape[1], -1).sum(2)
-		else:
-			out = out.view(out.shape[0], out.shape[1], -1).permute(0,2,1)
-		out = self.end_linear(out)
+		# if self.patch_size == 1:
+		# 	out = out.view(out.shape[0], out.shape[1], -1).sum(2)
+		# else:
+		# 	out = out.view(out.shape[0], out.shape[1], -1).permute(0,2,1)
+
+		out = out.view(out.shape[0], out.shape[1], -1)
+		t = out
+		out = self.end_linear(out.sum(2))
+		if self.use_local_loss:
+			out2 = self.local_end_linear(t.permute(0,2,1))
+			return (out, out2)
 		
 		return out
 
