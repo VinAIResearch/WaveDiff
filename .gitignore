@@ -43,4 +43,7 @@ Thumbs.db
 *.flv
 *.mov
 *.wmv
+slurm*.out
+slurm*.err
+
 

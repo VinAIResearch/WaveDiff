@@ -134,7 +134,7 @@ def sample_and_test(args):
     if args.dataset == 'cifar10':
         real_img_dir = 'pytorch_fid/cifar10_train_stat.npy'
     elif args.dataset == 'celeba_256':
-        real_img_dir = 'pytorch_fid/celeba_256_stat.npy'
+        real_img_dir = 'pytorch_fid/celebahq_stat.npy'
     elif args.dataset == 'lsun':
         real_img_dir = 'pytorch_fid/lsun_church_stat.npy'
     else:
@@ -177,6 +177,7 @@ def sample_and_test(args):
                 print('generating batch ', i)
         
         paths = [save_dir, real_img_dir]
+        print(paths)
     
         kwargs = {'batch_size': 100, 'device': device, 'dims': 2048}
         fid = calculate_fid_given_paths(paths=paths, **kwargs)

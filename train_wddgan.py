@@ -17,174 +17,16 @@ import torch.nn.functional as F
 import torch.optim as optim
 import torchvision
 
-import torchvision.transforms as transforms
-from torchvision.datasets import CIFAR10
-from datasets_prep.lsun import LSUN
-from datasets_prep.stackmnist_data import StackedMNIST, _data_transforms_stacked_mnist
-from datasets_prep.lmdb_datasets import LMDBDataset
+from datasets_prep.dataset import create_dataset
 
-
-from torch.multiprocessing import Process
-import torch.distributed as dist
 import shutil
+import torch.distributed as dist
+from torch.multiprocessing import Process
 
-def copy_source(file, output_dir):
-    shutil.copyfile(file, os.path.join(output_dir, os.path.basename(file)))
-            
-def broadcast_params(params):
-    for param in params:
-        dist.broadcast(param.data, src=0)
+from DWT_IDWT.DWT_IDWT_layer import DWT_2D, IDWT_2D
+from diffusion import *
+from utils import *
 
-
-#%% Diffusion coefficients 
-def var_func_vp(t, beta_min, beta_max):
-    log_mean_coeff = -0.25 * t ** 2 * (beta_max - beta_min) - 0.5 * t * beta_min
-    var = 1. - torch.exp(2. * log_mean_coeff)
-    return var
-
-def var_func_geometric(t, beta_min, beta_max):
-    return beta_min * ((beta_max / beta_min) ** t)
-
-def extract(input, t, shape):
-    out = torch.gather(input, 0, t)
-    reshape = [shape[0]] + [1] * (len(shape) - 1)
-    out = out.reshape(*reshape)
-
-    return out
-
-def get_time_schedule(args, device):
-    n_timestep = args.num_timesteps
-    eps_small = 1e-3
-    t = np.arange(0, n_timestep + 1, dtype=np.float64)
-    t = t / n_timestep
-    t = torch.from_numpy(t) * (1. - eps_small)  + eps_small
-    return t.to(device)
-
-def get_sigma_schedule(args, device):
-    n_timestep = args.num_timesteps
-    beta_min = args.beta_min
-    beta_max = args.beta_max
-    eps_small = 1e-3
-   
-    t = np.arange(0, n_timestep + 1, dtype=np.float64)
-    t = t / n_timestep
-    t = torch.from_numpy(t) * (1. - eps_small) + eps_small
-    
-    if args.use_geometric:
-        var = var_func_geometric(t, beta_min, beta_max)
-    else:
-        var = var_func_vp(t, beta_min, beta_max)
-    alpha_bars = 1.0 - var
-    betas = 1 - alpha_bars[1:] / alpha_bars[:-1]
-    
-    first = torch.tensor(1e-8)
-    betas = torch.cat((first[None], betas)).to(device)
-    betas = betas.type(torch.float32)
-    sigmas = betas**0.5
-    a_s = torch.sqrt(1-betas)
-    return sigmas, a_s, betas
-
-class Diffusion_Coefficients():
-    def __init__(self, args, device):
-                
-        self.sigmas, self.a_s, _ = get_sigma_schedule(args, device=device)
-        self.a_s_cum = np.cumprod(self.a_s.cpu())
-        self.sigmas_cum = np.sqrt(1 - self.a_s_cum ** 2)
-        self.a_s_prev = self.a_s.clone()
-        self.a_s_prev[-1] = 1
-        
-        self.a_s_cum = self.a_s_cum.to(device)
-        self.sigmas_cum = self.sigmas_cum.to(device)
-        self.a_s_prev = self.a_s_prev.to(device)
-    
-def q_sample(coeff, x_start, t, *, noise=None):
-    """
-    Diffuse the data (t == 0 means diffused for t step)
-    """
-    if noise is None:
-      noise = torch.randn_like(x_start)
-      
-    x_t = extract(coeff.a_s_cum, t, x_start.shape) * x_start + \
-          extract(coeff.sigmas_cum, t, x_start.shape) * noise
-    
-    return x_t
-
-def q_sample_pairs(coeff, x_start, t):
-    """
-    Generate a pair of disturbed images for training
-    :param x_start: x_0
-    :param t: time step t
-    :return: x_t, x_{t+1}
-    """
-    noise = torch.randn_like(x_start)
-    x_t = q_sample(coeff, x_start, t)
-    x_t_plus_one = extract(coeff.a_s, t+1, x_start.shape) * x_t + \
-                   extract(coeff.sigmas, t+1, x_start.shape) * noise
-    
-    return x_t, x_t_plus_one
-#%% posterior sampling
-class Posterior_Coefficients():
-    def __init__(self, args, device):
-        
-        _, _, self.betas = get_sigma_schedule(args, device=device)
-        
-        #we don't need the zeros
-        self.betas = self.betas.type(torch.float32)[1:]
-        
-        self.alphas = 1 - self.betas
-        self.alphas_cumprod = torch.cumprod(self.alphas, 0)
-        self.alphas_cumprod_prev = torch.cat(
-                                    (torch.tensor([1.], dtype=torch.float32,device=device), self.alphas_cumprod[:-1]), 0
-                                        )               
-        self.posterior_variance = self.betas * (1 - self.alphas_cumprod_prev) / (1 - self.alphas_cumprod)
-        
-        self.sqrt_alphas_cumprod = torch.sqrt(self.alphas_cumprod)
-        self.sqrt_recip_alphas_cumprod = torch.rsqrt(self.alphas_cumprod)
-        self.sqrt_recipm1_alphas_cumprod = torch.sqrt(1 / self.alphas_cumprod - 1)
-        
-        self.posterior_mean_coef1 = (self.betas * torch.sqrt(self.alphas_cumprod_prev) / (1 - self.alphas_cumprod))
-        self.posterior_mean_coef2 = ((1 - self.alphas_cumprod_prev) * torch.sqrt(self.alphas) / (1 - self.alphas_cumprod))
-        
-        self.posterior_log_variance_clipped = torch.log(self.posterior_variance.clamp(min=1e-20))
-        
-def sample_posterior(coefficients, x_0,x_t, t):
-    
-    def q_posterior(x_0, x_t, t):
-        mean = (
-            extract(coefficients.posterior_mean_coef1, t, x_t.shape) * x_0
-            + extract(coefficients.posterior_mean_coef2, t, x_t.shape) * x_t
-        )
-        var = extract(coefficients.posterior_variance, t, x_t.shape)
-        log_var_clipped = extract(coefficients.posterior_log_variance_clipped, t, x_t.shape)
-        return mean, var, log_var_clipped
-    
-  
-    def p_sample(x_0, x_t, t):
-        mean, _, log_var = q_posterior(x_0, x_t, t)
-        
-        noise = torch.randn_like(x_t)
-        
-        nonzero_mask = (1 - (t == 0).type(torch.float32))
-
-        return mean + nonzero_mask[:,None,None,None] * torch.exp(0.5 * log_var) * noise
-            
-    sample_x_pos = p_sample(x_0, x_t, t)
-    
-    return sample_x_pos
-
-def sample_from_model(coefficients, generator, n_time, x_init, T, opt):
-    x = x_init
-    with torch.no_grad():
-        for i in reversed(range(n_time)):
-            t = torch.full((x.size(0),), i, dtype=torch.int64).to(x.device)
-          
-            t_time = t
-            latent_z = torch.randn(x.size(0), opt.nz, device=x.device)
-            x_0 = generator(x, t_time, latent_z)
-            x_new = sample_posterior(coefficients, x_0, x, t)
-            x = x_new.detach()
-        
-    return x
 
 #%%
 def train(rank, gpu, args):
@@ -200,70 +42,37 @@ def train(rank, gpu, args):
     batch_size = args.batch_size
 
     nz = args.nz #latent dimension
+    if args.train_mode == "only_ll":
+        args.num_channels = 3 # low-res or wavelet-coefficients training
+    elif args.train_mode == "only_hi":
+        args.num_channels = 9 # low-res or wavelet-coefficients training
+    elif args.train_mode == "both":
+        args.num_channels = 12
 
-    if args.dataset == 'cifar10':
-        dataset = CIFAR10(args.datadir, train=True, transform=transforms.Compose([
-                        transforms.Resize(32),
-                        transforms.RandomHorizontalFlip(),
-                        transforms.ToTensor(),
-                        transforms.Normalize((0.5,0.5,0.5), (0.5,0.5,0.5))]), download=True)
-        
-
-    elif args.dataset == 'stackmnist':
-        train_transform, valid_transform = _data_transforms_stacked_mnist()
-        dataset = StackedMNIST(root=args.datadir, train=True, download=False, transform=train_transform)
-        
-    elif args.dataset == 'lsun':
-        
-        train_transform = transforms.Compose([
-                        transforms.Resize(args.image_size),
-                        transforms.CenterCrop(args.image_size),
-                        transforms.RandomHorizontalFlip(),
-                        transforms.ToTensor(),
-                        transforms.Normalize((0.5,0.5,0.5), (0.5,0.5,0.5))
-                    ])
-
-        train_data = LSUN(root=args.datadir, classes=['church_outdoor_train'], transform=train_transform)
-        subset = list(range(0, 120000))
-        dataset = torch.utils.data.Subset(train_data, subset)
-        
-
-    elif args.dataset == 'celeba_256':
-        train_transform = transforms.Compose([
-                transforms.Resize(args.image_size),
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor(),
-                transforms.Normalize((0.5,0.5,0.5), (0.5,0.5,0.5))
-            ])
-        dataset = LMDBDataset(root=args.datadir, name='celeba', train=True, transform=train_transform)
-        
-
-
+    dataset = create_dataset(args)
     train_sampler = torch.utils.data.distributed.DistributedSampler(dataset,
                                                                     num_replicas=args.world_size,
                                                                     rank=rank)
     data_loader = torch.utils.data.DataLoader(dataset,
-                                                batch_size=batch_size,
-                                                shuffle=False,
-                                                num_workers=4,
-                                                pin_memory=True,
-                                                sampler=train_sampler,
-                                                drop_last = True)
-
+                                               batch_size=batch_size,
+                                               shuffle=False,
+                                               num_workers=4,
+                                               pin_memory=True,
+                                               sampler=train_sampler,
+                                               drop_last = True)
+    args.ori_image_size = args.image_size
+    args.image_size = args.current_resolution
     netG = NCSNpp(args).to(device)
-    print(netG)
 
 
     if args.dataset == 'cifar10' or args.dataset == 'stackmnist':    
         netD = Discriminator_small(nc = 2*args.num_channels, ngf = args.ngf,
-                                t_emb_dim = args.t_emb_dim,
-                                act=nn.LeakyReLU(0.2), patch_size=args.patch_size,
-                                use_local_loss=args.use_local_loss).to(device)
+                               t_emb_dim = args.t_emb_dim,
+                               act=nn.LeakyReLU(0.2)).to(device)
     else:
         netD = Discriminator_large(nc = 2*args.num_channels, ngf = args.ngf, 
-                                    t_emb_dim = args.t_emb_dim,
-                                    act=nn.LeakyReLU(0.2), patch_size=args.patch_size,
-                                    use_local_loss=args.use_local_loss).to(device)
+                                   t_emb_dim = args.t_emb_dim,
+                                   act=nn.LeakyReLU(0.2)).to(device)
 
     broadcast_params(netG.parameters())
     broadcast_params(netD.parameters())
@@ -284,9 +93,13 @@ def train(rank, gpu, args):
     netG = nn.parallel.DistributedDataParallel(netG, device_ids=[gpu])
     netD = nn.parallel.DistributedDataParallel(netD, device_ids=[gpu])
 
+    # Wavelet Pooling
+    dwt = DWT_2D("haar")
+    iwt = IDWT_2D("haar")
+    num_levels = args.ori_image_size // args.current_resolution // 2
 
     exp = args.exp
-    parent_dir = "./saved_info/dd_gan/{}".format(args.dataset)
+    parent_dir = "./saved_info/wdd_gan/{}".format(args.dataset)
 
     exp_path = os.path.join(parent_dir,exp)
     if rank == 0:
@@ -316,14 +129,14 @@ def train(rank, gpu, args):
         schedulerD.load_state_dict(checkpoint['schedulerD'])
         global_step = checkpoint['global_step']
         print("=> loaded checkpoint (epoch {})"
-                    .format(checkpoint['epoch']))
+                  .format(checkpoint['epoch']))
     else:
         global_step, epoch, init_epoch = 0, 0, 0
 
 
     for epoch in range(init_epoch, args.num_epoch+1):
         train_sampler.set_epoch(epoch)
-        
+       
         for iteration, (x, y) in enumerate(data_loader):
             for p in netD.parameters():  
                 p.requires_grad = True  
@@ -332,7 +145,24 @@ def train(rank, gpu, args):
             netD.zero_grad()
             
             #sample from p(x_0)
-            real_data = x.to(device, non_blocking=True)
+            x0 = x.to(device, non_blocking=True)
+
+            for i in range(num_levels):
+                xll, xlh, xhl, xhh = dwt(x0)
+            
+            if args.train_mode == "only_ll":
+                real_data = xll # [b, 3, h, w]
+            elif args.train_mode == "only_hi":
+                real_data = torch.cat([xlh, xhl, xhh], dim=1) # [b, 9, h, w]
+            elif args.train_mode == "both":
+                real_data = torch.cat([xll, xlh, xhl, xhh], dim=1) # [b, 12, h, w]
+            
+            # normalize real_data
+            # real_data = (real_data - real_data.min()) / (real_data.max() - real_data.min()) # [0, 1]
+            # real_data = real_data * 2 - 1 # [-1, 1]
+            real_data = real_data / 2.0 # [-1, 1]
+            assert -1 <= real_data.min() < 0
+            assert 0 < real_data.max() <= 1
             
             #sample t
             t = torch.randint(0, args.num_timesteps, (real_data.size(0),), device=device)
@@ -342,16 +172,10 @@ def train(rank, gpu, args):
             
 
             # train with real
-            D_real = netD(x_t, t, x_tp1.detach())
-            if isinstance(D_real, tuple):
-                Dg_real, Dp_real = D_real
-                # D_real = Dg_real
-                # errD_real = F.softplus(-Dg_real).mean() + F.softplus(-Dp_real.view(-1)).mean()
-                D_real = Dp_real
-                errD_real = F.softplus(-Dp_real.view(-1)).mean()
-            else:
-                errD_real = F.softplus(-D_real)
-                errD_real = errD_real.mean()
+            D_real = netD(x_t, t, x_tp1.detach()).view(-1)
+            
+            errD_real = F.softplus(-D_real)
+            errD_real = errD_real.mean()
             
             errD_real.backward(retain_graph=True)
             
@@ -383,20 +207,14 @@ def train(rank, gpu, args):
             # train with fake
             latent_z = torch.randn(batch_size, nz, device=device)
             
-            
             x_0_predict = netG(x_tp1.detach(), t, latent_z)
             x_pos_sample = sample_posterior(pos_coeff, x_0_predict, x_tp1, t)
             
-            output = netD(x_pos_sample, t, x_tp1.detach())
+            output = netD(x_pos_sample, t, x_tp1.detach()).view(-1)
                 
-            if isinstance(output, tuple):	
-                Dg_fake, Dp_fake = output
-                # errD_fake = F.softplus(Dg_fake).mean() + F.softplus(Dp_fake.view(-1)).mean()
-                errD_fake = F.softplus(Dp_fake.view(-1)).mean()
-                
-            else:
-                errD_fake = F.softplus(output)
-                errD_fake = errD_fake.mean()
+            
+            errD_fake = F.softplus(output)
+            errD_fake = errD_fake.mean()
             errD_fake.backward()
 
             
@@ -418,26 +236,20 @@ def train(rank, gpu, args):
                 
             
             latent_z = torch.randn(batch_size, nz,device=device)
-            
-            
-                
-            
+           
+
             x_0_predict = netG(x_tp1.detach(), t, latent_z)
             x_pos_sample = sample_posterior(pos_coeff, x_0_predict, x_tp1, t)
             
-            output = netD(x_pos_sample, t, x_tp1.detach())
-
-            if isinstance(output, tuple):	
-                Gg, Gp = output
-                # errG = F.softplus(-Gg).mean() + F.softplus(-Gp.view(-1)).mean()
-                errG = F.softplus(-Gp.view(-1)).mean()
-            else:
-                errG = F.softplus(-output)
-                errG = errG.mean()
+            output = netD(x_pos_sample, t, x_tp1.detach()).view(-1)
+               
+            
+            errG = F.softplus(-output)
+            errG = errG.mean()
             
             errG.backward()
             optimizerG.step()
-                
+
             
             global_step += 1
             if iteration % 100 == 0:
@@ -451,19 +263,29 @@ def train(rank, gpu, args):
         
         if rank == 0:
             if epoch % 10 == 0:
+                x_pos_sample = x_pos_sample[:, :3]
                 torchvision.utils.save_image(x_pos_sample, os.path.join(exp_path, 'xpos_epoch_{}.png'.format(epoch)), normalize=True)
             
             x_t_1 = torch.randn_like(real_data)
             fake_sample = sample_from_model(pos_coeff, netG, args.num_timesteps, x_t_1, T, args)
+            if args.train_mode == "only_hi":
+                xll = xll / 2 # scale
+                fake_sample = iwt(xll, fake_sample[:, :3], fake_sample[:, 3:6], fake_sample[:, 6:9])
+                real_data = iwt(xll, real_data[:, :3], real_data[:, 3:6], real_data[:, 6:9])
+            elif args.train_mode == "both":
+                fake_sample = iwt(fake_sample[:, :3], fake_sample[:, 3:6], fake_sample[:, 6:9], fake_sample[:, 9:12])
+                real_data = iwt(real_data[:, :3], real_data[:, 3:6], real_data[:, 6:9], real_data[:, 9:12])
+
             torchvision.utils.save_image(fake_sample, os.path.join(exp_path, 'sample_discrete_epoch_{}.png'.format(epoch)), normalize=True)
+            torchvision.utils.save_image(real_data, os.path.join(exp_path, 'real_data.png'), normalize=True)
             
             if args.save_content:
                 if epoch % args.save_content_every == 0:
                     print('Saving content.')
                     content = {'epoch': epoch + 1, 'global_step': global_step, 'args': args,
-                                'netG_dict': netG.state_dict(), 'optimizerG': optimizerG.state_dict(),
-                                'schedulerG': schedulerG.state_dict(), 'netD_dict': netD.state_dict(),
-                                'optimizerD': optimizerD.state_dict(), 'schedulerD': schedulerD.state_dict()}
+                               'netG_dict': netG.state_dict(), 'optimizerG': optimizerG.state_dict(),
+                               'schedulerG': schedulerG.state_dict(), 'netD_dict': netD.state_dict(),
+                               'optimizerD': optimizerD.state_dict(), 'schedulerD': schedulerD.state_dict()}
                     
                     torch.save(content, os.path.join(exp_path, 'content.pth'))
                 
@@ -476,20 +298,6 @@ def train(rank, gpu, args):
                     optimizerG.swap_parameters_with_ema(store_params_in_ema=True)
             
 
-
-def init_processes(rank, size, fn, args):
-    """ Initialize the distributed environment. """
-    os.environ['MASTER_ADDR'] = args.master_address
-    os.environ['MASTER_PORT'] = args.master_port
-    torch.cuda.set_device(args.local_rank)
-    gpu = args.local_rank
-    dist.init_process_group(backend='nccl', init_method='env://', rank=rank, world_size=size)
-    fn(rank, gpu, args)
-    dist.barrier()
-    cleanup()  
-
-def cleanup():
-    dist.destroy_process_group()    
 #%%
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('ddgan parameters')
@@ -513,7 +321,6 @@ if __name__ == '__main__':
 
     parser.add_argument('--patch_size', type=int, default=1,
                             help='Patchify image into non-overlapped patches')
-    parser.add_argument('--use_local_loss', action='store_true')
     parser.add_argument('--num_channels_dae', type=int, default=128,
                             help='number of initial channels in denosing model')
     parser.add_argument('--n_mlp', type=int, default=3,
@@ -580,6 +387,12 @@ if __name__ == '__main__':
     parser.add_argument('--lazy_reg', type=int, default=None,
                         help='lazy regulariation.')
 
+    # wavelet GAN
+    parser.add_argument("--current_resolution", type=int, default=256)
+    parser.add_argument("--train_mode", default="only_ll")
+
+
+
     parser.add_argument('--save_content', action='store_true',default=False)
     parser.add_argument('--save_content_every', type=int, default=50, help='save content for resuming every x epochs')
     parser.add_argument('--save_ckpt_every', type=int, default=25, help='save ckpt every x epochs')
@@ -600,6 +413,7 @@ if __name__ == '__main__':
 
 
     args = parser.parse_args()
+
     args.world_size = args.num_proc_node * args.num_process_per_node
     size = args.num_process_per_node
 
@@ -621,5 +435,5 @@ if __name__ == '__main__':
         print('starting in debug mode')
         
         init_processes(0, size, train, args)
-       
-                    
+
+                
