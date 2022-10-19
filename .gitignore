@@ -46,4 +46,10 @@ Thumbs.db
 slurm*.out
 slurm*.err
 
+# generated image
+*.jpg
+*.png
+
+# archive
+*.zip
 

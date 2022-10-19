@@ -30,6 +30,24 @@ from pytorch_wavelets import DWTForward, DWTInverse
 from diffusion import *
 from utils import *
 
+
+def cond_sample_from_model(coefficients, generator, n_time, x_init, T, opt, cond=None):
+    x = x_init
+    with torch.no_grad():
+        for i in reversed(range(n_time)):
+            t = torch.full((x.size(0),), i, dtype=torch.int64).to(x.device)
+          
+            t_time = t
+            latent_z = torch.randn(x.size(0), opt.nz, device=x.device)
+            if cond is None:
+                x_0 = generator(x, t_time, latent_z)
+            else:
+                x_0 = generator(torch.cat([cond, x], dim=1), t_time, latent_z)
+            x_new = sample_posterior(coefficients, x_0, x, t)
+            x = x_new.detach()
+        
+    return x
+
 def grad_penalty_call(args, D_real, x_t):
     grad_real = torch.autograd.grad(
                 outputs=D_real.sum(), inputs=x_t, create_graph=True
@@ -54,13 +72,13 @@ def train(rank, gpu, args):
     device = torch.device('cuda:{}'.format(gpu))
 
     batch_size = args.batch_size
-    print(args.attn_resolutions)
 
     nz = args.nz #latent dimension
     if args.train_mode == "only_ll":
         args.num_channels = 3 # low-res or wavelet-coefficients training
     elif args.train_mode == "only_hi":
-        args.num_channels = 9 # low-res or wavelet-coefficients training
+        args.num_channels = 12 # 3 channels conditioning high-freq generation 
+        args.num_out_channels = 9 
     elif args.train_mode == "both":
         args.num_channels = 12
 
@@ -77,41 +95,31 @@ def train(rank, gpu, args):
                                                drop_last = True)
     args.ori_image_size = args.image_size
     args.image_size = args.current_resolution
-    if args.two_gens:
-        gen_args1 = copy.deepcopy(args)
-        gen_args2 = copy.deepcopy(args)
-        gen_args1.num_channels = 3
-        gen_args2.num_channels = 12
-        gen_args2.num_out_channels = 9
-        netG = NCSNpp(gen_args1).to(device)
-        netG_freq = NCSNpp(gen_args2).to(device)
+    CH_MULT = {
+        32: [1, 2, 2, 2],
+        64: [1, 2, 2, 2, 4],
+        128: [1, 1, 2, 2, 4, 4],
+        256: [1, 1, 2, 2, 4, 4],
+    }
+    # TODO: changing arch for each resolution
+    # args.ch_mult = CH_MULT[args.ori_image_size] 
+    args.ch_mult = CH_MULT[args.image_size] 
+
+    netG = NCSNpp(args).to(device)
+
+    if args.train_mode == "only_hi":
+        num_in_channels = 9
     else:
-        netG = NCSNpp(args).to(device)
+        num_in_channels = 3
 
     if args.dataset == 'cifar10' or args.dataset == 'stackmnist':    
-        if not args.two_disc:
-           netD = Discriminator_small(nc = 2*args.num_channels, ngf = args.ngf,
-                                  t_emb_dim = args.t_emb_dim,
-                                  act=nn.LeakyReLU(0.2)).to(device)
-        else:
-           netD = Discriminator_small(nc = 2*3, ngf = args.ngf,
-                                   t_emb_dim = args.t_emb_dim,
-                                   act=nn.LeakyReLU(0.2)).to(device)
-           netD_freq = Discriminator_small(nc = 2*9, ngf = args.ngf,
-                                  t_emb_dim = args.t_emb_dim,
-                                  act=nn.LeakyReLU(0.2)).to(device)
+        netD = Discriminator_small(nc = 2*num_in_channels, ngf = args.ngf,
+                              t_emb_dim = args.t_emb_dim,
+                              act=nn.LeakyReLU(0.2)).to(device)
     else:
-        if not args.two_disc:
-            netD = Discriminator_large(nc = 2*args.num_channels, ngf = args.ngf, 
-                                      t_emb_dim = args.t_emb_dim,
-                                      act=nn.LeakyReLU(0.2)).to(device)
-        else:
-            netD = Discriminator_large(nc = 2*3, ngf = args.ngf, 
-                                       t_emb_dim = args.t_emb_dim,
-                                       act=nn.LeakyReLU(0.2)).to(device)
-            netD_freq = Discriminator_large(nc = 2*9, ngf = args.ngf, 
-                                      t_emb_dim = args.t_emb_dim,
-                                      act=nn.LeakyReLU(0.2)).to(device)
+        netD = Discriminator_large(nc = 2*num_in_channels, ngf = args.ngf, 
+                                  t_emb_dim = args.t_emb_dim,
+                                  act=nn.LeakyReLU(0.2)).to(device)
 
 
     broadcast_params(netG.parameters())
@@ -127,38 +135,22 @@ def train(rank, gpu, args):
     schedulerG = torch.optim.lr_scheduler.CosineAnnealingLR(optimizerG, args.num_epoch, eta_min=1e-5)
     schedulerD = torch.optim.lr_scheduler.CosineAnnealingLR(optimizerD, args.num_epoch, eta_min=1e-5)
 
-    if args.two_disc:
-        broadcast_params(netD_freq.parameters())
-        optimizerD_freq = optim.Adam(netD_freq.parameters(), lr=args.lr_d, betas = (args.beta1, args.beta2))
-        schedulerD_freq = torch.optim.lr_scheduler.CosineAnnealingLR(optimizerD_freq, args.num_epoch, eta_min=1e-5)
-    if args.two_gens:
-        broadcast_params(netG_freq.parameters())
-        optimizerG_freq = optim.Adam(netG_freq.parameters(), lr=args.lr_g, betas = (args.beta1, args.beta2))
-        schedulerG_freq = torch.optim.lr_scheduler.CosineAnnealingLR(optimizerG_freq, args.num_epoch, eta_min=1e-5)
-        if args.use_ema:
-            optimizerG_freq = EMA(optimizerG_freq, ema_decay=args.ema_decay)
-
 
     #ddp
     netG = nn.parallel.DistributedDataParallel(netG, device_ids=[gpu])
     netD = nn.parallel.DistributedDataParallel(netD, device_ids=[gpu])
-    if args.two_disc:
-        netD_freq = nn.parallel.DistributedDataParallel(netD_freq, device_ids=[gpu])
-    if args.two_gens:
-        netG_freq = nn.parallel.DistributedDataParallel(netG_freq, device_ids=[gpu])
 
     # Wavelet Pooling
+    num_levels = args.ori_image_size // args.current_resolution // 2
     if not args.use_pytorch_wavelet:
         dwt = DWT_2D("haar")
         iwt = IDWT_2D("haar")
     else:
-        dwt = DWTForward(J=1, mode='zero', wave='haar').cuda()
+        dwt = DWTForward(J=num_levels, mode='zero', wave='haar').cuda()
         iwt = DWTInverse(mode='zero', wave='haar').cuda()
 
-    num_levels = args.ori_image_size // args.current_resolution // 2
-
     exp = args.exp
-    parent_dir = "./saved_info/wdd_gan/{}".format(args.dataset)
+    parent_dir = "./saved_info/multiscale_wdd_gan/{}".format(args.dataset)
 
     exp_path = os.path.join(parent_dir,exp)
     if rank == 0:
@@ -187,24 +179,13 @@ def train(rank, gpu, args):
         optimizerD.load_state_dict(checkpoint['optimizerD'])
         schedulerD.load_state_dict(checkpoint['schedulerD'])
 
-        # load D_freq
-        if args.two_disc:
-            netD_freq.load_state_dict(checkpoint['netD_freq_dict'])
-            optimizerD_freq.load_state_dict(checkpoint['optimizerD_freq'])
-            schedulerD_freq.load_state_dict(checkpoint['schedulerD_freq'])
-
-        # load G_freq
-        if args.two_gens:
-            netG_freq.load_state_dict(checkpoint['netG_freq_dict'])
-            optimizerG_freq.load_state_dict(checkpoint['optimizerG_freq'])
-            schedulerG_freq.load_state_dict(checkpoint['schedulerG_freq'])
-
         global_step = checkpoint['global_step']
         print("=> loaded checkpoint (epoch {})"
                   .format(checkpoint['epoch']))
     else:
         global_step, epoch, init_epoch = 0, 0, 0
 
+    scale = 2.0*num_levels
 
     for epoch in range(init_epoch, args.num_epoch+1):
         train_sampler.set_epoch(epoch)
@@ -214,11 +195,6 @@ def train(rank, gpu, args):
                 p.requires_grad = True  
             netD.zero_grad()
 
-            if args.two_disc:
-                for p in netD_freq.parameters():  
-                    p.requires_grad = True  
-                netD_freq.zero_grad()
-            
             #sample from p(x_0)
             x0 = x.to(device, non_blocking=True)
 
@@ -227,28 +203,27 @@ def train(rank, gpu, args):
                     xll, xlh, xhl, xhh = dwt(x0)
             else:
                 xll, xh = dwt(x0) # [b, 3, h, w], [b, 3, 3, h, w]
-                xlh, xhl, xhh = torch.unbind(xh[0], dim=2)
+                xlh, xhl, xhh = torch.unbind(xh[-1], dim=2)
             
             if args.train_mode == "only_ll":
                 real_data = xll # [b, 3, h, w]
             elif args.train_mode == "only_hi":
                 real_data = torch.cat([xlh, xhl, xhh], dim=1) # [b, 9, h, w]
+                xll = xll / scale # [-1, 1]
             elif args.train_mode == "both":
                 real_data = torch.cat([xll, xlh, xhl, xhh], dim=1) # [b, 12, h, w]
-            
             
             # normalize real_data
             # real_data = (real_data - real_data.min()) / (real_data.max() - real_data.min()) # [0, 1]
             # real_data = real_data * 2 - 1 # [-1, 1]
-            real_data = real_data / 2.0 # [-1, 1]
-
-            print("xll:", xll.min(), xll.max())
-            print("xlh:", xlh.min(), xlh.max())
-            print("xhl:", xhl.min(), xhl.max())
-            print("xhh:", xhh.min(), xhh.max())
-            
+            real_data = real_data / scale # [-1, 1]
+            # print(real_data.min(), real_data.max())
             assert -1 <= real_data.min() < 0
             assert 0 < real_data.max() <= 1
+            # print("xll:", xll.min(), xll.max())
+            # print("xlh:", xlh.min(), xlh.max())
+            # print("xhl:", xhl.min(), xhl.max())
+            # print("xhh:", xhh.min(), xhh.max())
             
             #sample t
             t = torch.randint(0, args.num_timesteps, (real_data.size(0),), device=device)
@@ -258,116 +233,68 @@ def train(rank, gpu, args):
             
 
             # train with real
-            if args.two_disc:
-                xl_t, xh_t = x_t[:, :3], x_t[:, 3:]
-                xl_tp1, xh_tp1 = x_tp1[:, :3], x_tp1[:, 3:]
-
-                D_real = netD(xl_t, t, xl_tp1.detach()).view(-1)
-                D_real_freq = netD_freq(xh_t, t, xh_tp1.detach()).view(-1)
-                
-                errD_real = F.softplus(-D_real)
-                errD_real_freq = F.softplus(-D_real_freq)
-                errD_real = args.low_alpha*errD_real.mean() + args.high_alpha*errD_real_freq.mean()
-            else:
-                D_real = netD(x_t, t, x_tp1.detach()).view(-1)
-                errD_real = F.softplus(-D_real).mean()
+            D_real = netD(x_t, t, x_tp1.detach()).view(-1)
+            errD_real = F.softplus(-D_real).mean()
             
             errD_real.backward(retain_graph=True)
             
             if args.lazy_reg is None:
-                if args.two_disc:
-                    grad_penalty_call(args, D_real, xl_t)
-                    grad_penalty_call(args, D_real_freq, xh_t)
-                else:
-                    grad_penalty_call(args, D_real, x_t)
+                grad_penalty_call(args, D_real, x_t)
             else:
                 if global_step % args.lazy_reg == 0:
-                    if args.two_disc:
-                        grad_penalty_call(args, D_real, xl_t)
-                        grad_penalty_call(args, D_real_freq, xh_t)
-                    else:
-                        grad_penalty_call(args, D_real, x_t)
+                    grad_penalty_call(args, D_real, x_t)
 
             # train with fake
             
-            if args.two_gens:
-                latent_z = torch.randn(batch_size, nz, device=device)
-                latent_z_freq = torch.randn(batch_size, nz, device=device)
-                xl_0_predict = netG(x_tp1[:, :3].detach(), t, latent_z)
-                # xh_0_predict = netG_freq(x_tp1[:, 3:].detach(), t, latent_z_freq)
-                xh_0_predict = netG_freq(torch.cat((xl_0_predict, x_tp1[:, 3:].detach()), dim=1), t, latent_z_freq)
-                x_0_predict = torch.cat((xl_0_predict, xh_0_predict), dim=1)
+            # concatenate gt ll for condition high-freq generation
+            latent_z = torch.randn(batch_size, nz, device=device)
+            if args.train_mode == "only_hi":
+                x_0_predict = netG(torch.cat((xll, x_tp1.detach()), dim=1), t, latent_z)
             else:
-                latent_z = torch.randn(batch_size, nz, device=device)
                 x_0_predict = netG(x_tp1.detach(), t, latent_z)
+            
             x_pos_sample = sample_posterior(pos_coeff, x_0_predict, x_tp1, t)
             
-            if args.two_disc:
-                output = netD(x_pos_sample[:, :3], t, x_tp1[:, :3].detach()).view(-1)
-                output_freq = netD_freq(x_pos_sample[:, 3:], t, x_tp1[:, 3:].detach()).view(-1)
-                errD_fake = F.softplus(output)
-                errD_fake_freq = F.softplus(output_freq) 
-                errD_fake = errD_fake.mean() + errD_fake_freq.mean()
-            else:
-                output = netD(x_pos_sample, t, x_tp1.detach()).view(-1)
-                errD_fake = F.softplus(output).mean()
+            output = netD(x_pos_sample, t, x_tp1.detach()).view(-1)
+            errD_fake = F.softplus(output).mean()
             
             errD_fake.backward()
             
             errD = errD_real + errD_fake
             # Update D
             optimizerD.step()
-            if args.two_disc:
-                optimizerD_freq.step()
             
         
             #update G
             for p in netD.parameters():
                 p.requires_grad = False
-            if args.two_disc:
-                for p in netD_freq.parameters():
-                    p.requires_grad = False
             netG.zero_grad()
-            if args.two_gens:
-                netG_freq.zero_grad()
             
             
             t = torch.randint(0, args.num_timesteps, (real_data.size(0),), device=device)
+            
+            
             x_t, x_tp1 = q_sample_pairs(coeff, real_data, t)
                 
             
            
-            if args.two_gens:
-                latent_z = torch.randn(batch_size, nz,device=device)
-                latent_z_freq = torch.randn(batch_size, nz,device=device)
-                xl_0_predict = netG(x_tp1[:, :3].detach(), t, latent_z)
-                # xh_0_predict = netG_freq(x_tp1[:, 3:].detach(), t, latent_z_freq)
-                xh_0_predict = netG_freq(torch.cat((xl_0_predict, x_tp1[:, 3:].detach()), dim=1), t, latent_z_freq)
-                x_0_predict = torch.cat((xl_0_predict, xh_0_predict), dim=1)
+            latent_z = torch.randn(batch_size, nz,device=device)
+            if args.train_mode == "only_hi":
+                x_0_predict = netG(torch.cat([xll, x_tp1.detach()], dim=1), t, latent_z)
             else:
-                latent_z = torch.randn(batch_size, nz,device=device)
                 x_0_predict = netG(x_tp1.detach(), t, latent_z)
             x_pos_sample = sample_posterior(pos_coeff, x_0_predict, x_tp1, t)
             
-            if args.two_disc:
-                output = netD(x_pos_sample[:, :3], t, x_tp1[:, :3].detach()).view(-1)
-                output_freq = netD_freq(x_pos_sample[:, 3:], t, x_tp1[:, 3:].detach()).view(-1)
-                errG = args.low_alpha*F.softplus(-output)
-                errG_freq = args.high_alpha*F.softplus(-output_freq)
-                errG = errG.mean() + errG_freq.mean()
-            else:
-                output = netD(x_pos_sample, t, x_tp1.detach()).view(-1)
-                errG = F.softplus(-output).mean()
+            output = netD(x_pos_sample, t, x_tp1.detach()).view(-1)
+            errG = F.softplus(-output).mean()
             
             # reconstructior loss
             if args.rec_loss:
                 errG = errG + F.l1_loss(x_0_predict, real_data)
+
             
             errG.backward()
             optimizerG.step()
-            if args.two_gens:
-                optimizerG_freq.step()
-
             
             global_step += 1
             if iteration % 100 == 0:
@@ -378,10 +305,6 @@ def train(rank, gpu, args):
             
             schedulerG.step()
             schedulerD.step()
-            if args.two_disc:
-                schedulerD_freq.step()
-            if args.two_gens:
-                schedulerG_freq.step()
         
         if rank == 0:
             if epoch % 10 == 0:
@@ -389,23 +312,21 @@ def train(rank, gpu, args):
                 torchvision.utils.save_image(x_pos_sample, os.path.join(exp_path, 'xpos_epoch_{}.png'.format(epoch)), normalize=True)
             
             x_t_1 = torch.randn_like(real_data)
-            if args.two_gens:
-                fake_sample = sample_from_dual_generators(pos_coeff, netG, netG_freq, args.num_timesteps, x_t_1, T, args)
-            else:
+            if args.train_mode == "only_ll":
                 fake_sample = sample_from_model(pos_coeff, netG, args.num_timesteps, x_t_1, T, args)
-            if args.train_mode == "only_hi":
-                fake_sample *= 2
-                real_data *= 2
+            elif args.train_mode == "only_hi":
+                fake_sample = cond_sample_from_model(pos_coeff, netG, args.num_timesteps, x_t_1, T, args, cond=xll)
                 if not args.use_pytorch_wavelet:
-                    fake_sample = iwt(xll, fake_sample[:, :3], fake_sample[:, 3:6], fake_sample[:, 6:9])
-                    real_data = iwt(xll, real_data[:, :3], real_data[:, 3:6], real_data[:, 6:9])
+                    fake_sample = iwt(scale*xll, scale*fake_sample[:, :3], scale*fake_sample[:, 3:6], scale*fake_sample[:, 6:9])
+                    real_data = iwt(scale*xll, scale*real_data[:, :3], scale*real_data[:, 3:6], scale*real_data[:, 6:9])
                 else:
-                    fake_sample = iwt((xll, [torch.stack((fake_sample[:, :3], fake_sample[:, 3:6], fake_sample[:, 6:9]), dim=2)]))
-                    real_data = iwt((xll, [torch.stack((real_data[:, :3], real_data[:, 3:6], real_data[:, 6:9]), dim=2)]))
+                    fake_sample = iwt((scale*xll, [scale*torch.stack((fake_sample[:, :3], fake_sample[:, 3:6], fake_sample[:, 6:9]), dim=2)]))
+                    real_data = iwt((scale*xll, [scale*torch.stack((real_data[:, :3], real_data[:, 3:6], real_data[:, 6:9]), dim=2)]))
             
             elif args.train_mode == "both":
-                fake_sample *= 2
-                real_data *= 2
+                fake_sample = sample_from_model(pos_coeff, netG, args.num_timesteps, x_t_1, T, args)
+                fake_sample *= scale
+                real_data *= scale
                 if not args.use_pytorch_wavelet:
                      fake_sample = iwt(fake_sample[:, :3], fake_sample[:, 3:6], fake_sample[:, 6:9], fake_sample[:, 9:12])
                      real_data = iwt(real_data[:, :3], real_data[:, 3:6], real_data[:, 6:9], real_data[:, 9:12])
@@ -426,29 +347,15 @@ def train(rank, gpu, args):
                                'netG_dict': netG.state_dict(), 'optimizerG': optimizerG.state_dict(),
                                'schedulerG': schedulerG.state_dict(), 'netD_dict': netD.state_dict(),
                                'optimizerD': optimizerD.state_dict(), 'schedulerD': schedulerD.state_dict()} 
-                    if args.two_disc:
-                        content.update(
-                                {'netD_freq_dict': netD_freq.state_dict(),
-                               'optimizerD_freq': optimizerD_freq.state_dict(), 'schedulerD_freq': schedulerD_freq.state_dict()})
-                    if args.two_gens:
-                        content.update(
-                                {'netG_freq_dict': netG_freq.state_dict(),
-                               'optimizerG_freq': optimizerG_freq.state_dict(), 'schedulerG_freq': schedulerG_freq.state_dict()})
                     torch.save(content, os.path.join(exp_path, 'content.pth'))
                 
             if epoch % args.save_ckpt_every == 0:
                 if args.use_ema:
                     optimizerG.swap_parameters_with_ema(store_params_in_ema=True)
-                    if args.two_gens:
-                        optimizerG_freq.swap_parameters_with_ema(store_params_in_ema=True)
                     
                 torch.save(netG.state_dict(), os.path.join(exp_path, 'netG_{}.pth'.format(epoch)))
-                if args.two_gens:
-                    torch.save(netG_freq.state_dict(), os.path.join(exp_path, 'netG_freq_{}.pth'.format(epoch)))
                 if args.use_ema:
                     optimizerG.swap_parameters_with_ema(store_params_in_ema=True)
-                    if args.two_gens:
-                        optimizerG_freq.swap_parameters_with_ema(store_params_in_ema=True)
 
 #%%
 if __name__ == '__main__':
@@ -481,7 +388,7 @@ if __name__ == '__main__':
                             help='channel multiplier')
     parser.add_argument('--num_res_blocks', type=int, default=2,
                             help='number of resnet blocks per scale')
-    parser.add_argument('--attn_resolutions', default=(16,), nargs='+', type=int,
+    parser.add_argument('--attn_resolutions', default=(16,),
                             help='resolution of applying attention')
     parser.add_argument('--dropout', type=float, default=0.,
                             help='drop-out rate')
@@ -542,11 +449,7 @@ if __name__ == '__main__':
     # wavelet GAN
     parser.add_argument("--current_resolution", type=int, default=256)
     parser.add_argument("--train_mode", default="only_ll")
-    parser.add_argument("--two_disc", action="store_true")
-    parser.add_argument("--low_alpha", type=float, default=1.)
-    parser.add_argument("--high_alpha", type=float, default=1.)
     parser.add_argument("--use_pytorch_wavelet", action="store_true")
-    parser.add_argument("--two_gens", action="store_true")
     parser.add_argument("--rec_loss", action="store_true")
 
 

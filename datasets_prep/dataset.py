@@ -42,4 +42,13 @@ def create_dataset(args):
             ])
         dataset = LMDBDataset(root=args.datadir, name='celeba', train=True, transform=train_transform)
 
+    elif args.dataset == 'ffhq_256':
+        train_transform = transforms.Compose([
+                transforms.Resize(args.image_size),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize((0.5,0.5,0.5), (0.5,0.5,0.5))
+            ])
+        dataset = LMDBDataset(root=args.datadir, name='ffhq', train=True, transform=train_transform)
+
     return dataset
