@@ -44,8 +44,8 @@ def grad_penalty_call(args, D_real, x_t):
 
 #%%
 def train(rank, gpu, args):
-    from score_sde.models.discriminator import Discriminator_small, Discriminator_large
-    from score_sde.models.ncsnpp_generator_adagn import NCSNpp
+    from score_sde.models.discriminator import Discriminator_small, Discriminator_large, WaveletDiscriminator_small, WaveletDiscriminator_large
+    from score_sde.models.ncsnpp_generator_adagn import NCSNpp, WaveletNCSNpp
     from EMA import EMA
 
     torch.manual_seed(args.seed + rank)
@@ -54,7 +54,7 @@ def train(rank, gpu, args):
     device = torch.device('cuda:{}'.format(gpu))
 
     batch_size = args.batch_size
-    print(args.attn_resolutions)
+    # print(args.attn_resolutions)
 
     nz = args.nz #latent dimension
     if args.train_mode == "only_ll":
@@ -77,41 +77,47 @@ def train(rank, gpu, args):
                                                drop_last = True)
     args.ori_image_size = args.image_size
     args.image_size = args.current_resolution
+    G_NET_ZOO = {"normal": NCSNpp, "wavelet": WaveletNCSNpp}
+    D_NET_ZOO = {"normal": [Discriminator_small, Discriminator_large], 
+        "wavelet": [WaveletDiscriminator_small, WaveletDiscriminator_large]}
+    gen_net = G_NET_ZOO[args.net_type]
+    disc_net = D_NET_ZOO[args.net_type]
+    print("GEN: {}, DISC: {}".format(gen_net, disc_net))
     if args.two_gens:
         gen_args1 = copy.deepcopy(args)
         gen_args2 = copy.deepcopy(args)
         gen_args1.num_channels = 3
         gen_args2.num_channels = 12
         gen_args2.num_out_channels = 9
-        netG = NCSNpp(gen_args1).to(device)
-        netG_freq = NCSNpp(gen_args2).to(device)
+        netG = gen_net(gen_args1).to(device)
+        netG_freq = gen_net(gen_args2).to(device)
     else:
-        netG = NCSNpp(args).to(device)
+        netG = gen_net(args).to(device)
 
     if args.dataset == 'cifar10' or args.dataset == 'stackmnist':    
         if not args.two_disc:
-           netD = Discriminator_small(nc = 2*args.num_channels, ngf = args.ngf,
+           netD = disc_net[0](nc = 2*args.num_channels, ngf = args.ngf,
                                   t_emb_dim = args.t_emb_dim,
-                                  act=nn.LeakyReLU(0.2)).to(device)
+                                  act=nn.LeakyReLU(0.2), num_layers=args.num_disc_layers).to(device)
         else:
-           netD = Discriminator_small(nc = 2*3, ngf = args.ngf,
+           netD = disc_net[0](nc = 2*3, ngf = args.ngf,
                                    t_emb_dim = args.t_emb_dim,
-                                   act=nn.LeakyReLU(0.2)).to(device)
-           netD_freq = Discriminator_small(nc = 2*9, ngf = args.ngf,
+                                   act=nn.LeakyReLU(0.2), num_layers=args.num_disc_layers).to(device)
+           netD_freq = disc_net[0](nc = 2*9, ngf = args.ngf,
                                   t_emb_dim = args.t_emb_dim,
-                                  act=nn.LeakyReLU(0.2)).to(device)
+                                  act=nn.LeakyReLU(0.2), num_layers=args.num_disc_layers).to(device)
     else:
         if not args.two_disc:
-            netD = Discriminator_large(nc = 2*args.num_channels, ngf = args.ngf, 
+            netD = disc_net[1](nc = 2*args.num_channels, ngf = args.ngf, 
                                       t_emb_dim = args.t_emb_dim,
-                                      act=nn.LeakyReLU(0.2)).to(device)
+                                      act=nn.LeakyReLU(0.2), num_layers=args.num_disc_layers).to(device)
         else:
-            netD = Discriminator_large(nc = 2*3, ngf = args.ngf, 
+            netD = disc_net[1](nc = 2*3, ngf = args.ngf, 
                                        t_emb_dim = args.t_emb_dim,
-                                       act=nn.LeakyReLU(0.2)).to(device)
-            netD_freq = Discriminator_large(nc = 2*9, ngf = args.ngf, 
+                                       act=nn.LeakyReLU(0.2), num_layers=args.num_disc_layers).to(device)
+            netD_freq = disc_net[1](nc = 2*9, ngf = args.ngf, 
                                       t_emb_dim = args.t_emb_dim,
-                                      act=nn.LeakyReLU(0.2)).to(device)
+                                      act=nn.LeakyReLU(0.2), num_layers=args.num_disc_layers).to(device)
 
 
     broadcast_params(netG.parameters())
@@ -140,7 +146,7 @@ def train(rank, gpu, args):
 
 
     #ddp
-    netG = nn.parallel.DistributedDataParallel(netG, device_ids=[gpu])
+    netG = nn.parallel.DistributedDataParallel(netG, device_ids=[gpu], find_unused_parameters=True) # 
     netD = nn.parallel.DistributedDataParallel(netD, device_ids=[gpu])
     if args.two_disc:
         netD_freq = nn.parallel.DistributedDataParallel(netD_freq, device_ids=[gpu])
@@ -218,6 +224,9 @@ def train(rank, gpu, args):
                 for p in netD_freq.parameters():  
                     p.requires_grad = True  
                 netD_freq.zero_grad()
+
+            for p in netG.parameters():  
+                p.requires_grad = False  
             
             #sample from p(x_0)
             x0 = x.to(device, non_blocking=True)
@@ -242,10 +251,10 @@ def train(rank, gpu, args):
             # real_data = real_data * 2 - 1 # [-1, 1]
             real_data = real_data / 2.0 # [-1, 1]
 
-            print("xll:", xll.min(), xll.max())
-            print("xlh:", xlh.min(), xlh.max())
-            print("xhl:", xhl.min(), xhl.max())
-            print("xhh:", xhh.min(), xhh.max())
+            # print("xll:", xll.min(), xll.max())
+            # print("xlh:", xlh.min(), xlh.max())
+            # print("xhl:", xhl.min(), xhl.max())
+            # print("xhh:", xhh.min(), xhh.max())
             
             assert -1 <= real_data.min() < 0
             assert 0 < real_data.max() <= 1
@@ -289,7 +298,6 @@ def train(rank, gpu, args):
                         grad_penalty_call(args, D_real, x_t)
 
             # train with fake
-            
             if args.two_gens:
                 latent_z = torch.randn(batch_size, nz, device=device)
                 latent_z_freq = torch.randn(batch_size, nz, device=device)
@@ -327,6 +335,9 @@ def train(rank, gpu, args):
             if args.two_disc:
                 for p in netD_freq.parameters():
                     p.requires_grad = False
+
+            for p in netG.parameters():  
+                p.requires_grad = True  
             netG.zero_grad()
             if args.two_gens:
                 netG_freq.zero_grad()
@@ -548,6 +559,8 @@ if __name__ == '__main__':
     parser.add_argument("--use_pytorch_wavelet", action="store_true")
     parser.add_argument("--two_gens", action="store_true")
     parser.add_argument("--rec_loss", action="store_true")
+    parser.add_argument("--net_type", default="normal")
+    parser.add_argument("--num_disc_layers", default=6, type=int)
 
 
     parser.add_argument('--save_content', action='store_true',default=False)

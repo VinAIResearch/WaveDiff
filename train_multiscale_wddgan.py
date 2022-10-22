@@ -62,8 +62,8 @@ def grad_penalty_call(args, D_real, x_t):
 
 #%%
 def train(rank, gpu, args):
-    from score_sde.models.discriminator import Discriminator_small, Discriminator_large
-    from score_sde.models.ncsnpp_generator_adagn import NCSNpp
+    from score_sde.models.discriminator import Discriminator_small, Discriminator_large, WaveletDiscriminator_small, WaveletDiscriminator_large
+    from score_sde.models.ncsnpp_generator_adagn import NCSNpp, WaveletNCSNpp
     from EMA import EMA
 
     torch.manual_seed(args.seed + rank)
@@ -105,7 +105,14 @@ def train(rank, gpu, args):
     # args.ch_mult = CH_MULT[args.ori_image_size] 
     args.ch_mult = CH_MULT[args.image_size] 
 
-    netG = NCSNpp(args).to(device)
+    G_NET_ZOO = {"normal": NCSNpp, "wavelet": WaveletNCSNpp}
+    D_NET_ZOO = {"normal": [Discriminator_small, Discriminator_large], 
+        "wavelet": [WaveletDiscriminator_small, WaveletDiscriminator_large]}
+    gen_net = G_NET_ZOO[args.net_type]
+    disc_net = D_NET_ZOO[args.net_type]
+    print("GEN: {}, DISC: {}".format(gen_net, disc_net))
+
+    netG = gen_net(args).to(device)
 
     if args.train_mode == "only_hi":
         num_in_channels = 9
@@ -113,13 +120,13 @@ def train(rank, gpu, args):
         num_in_channels = 3
 
     if args.dataset == 'cifar10' or args.dataset == 'stackmnist':    
-        netD = Discriminator_small(nc = 2*num_in_channels, ngf = args.ngf,
+        netD = disc_net[0](nc = 2*num_in_channels, ngf = args.ngf,
                               t_emb_dim = args.t_emb_dim,
                               act=nn.LeakyReLU(0.2)).to(device)
     else:
-        netD = Discriminator_large(nc = 2*num_in_channels, ngf = args.ngf, 
+        netD = disc_net[1](nc = 2*num_in_channels, ngf = args.ngf, 
                                   t_emb_dim = args.t_emb_dim,
-                                  act=nn.LeakyReLU(0.2)).to(device)
+                                  act=nn.LeakyReLU(0.2), num_layers=args.num_disc_layers).to(device)
 
 
     broadcast_params(netG.parameters())
@@ -137,7 +144,7 @@ def train(rank, gpu, args):
 
 
     #ddp
-    netG = nn.parallel.DistributedDataParallel(netG, device_ids=[gpu])
+    netG = nn.parallel.DistributedDataParallel(netG, device_ids=[gpu], find_unused_parameters=True) # prevent error
     netD = nn.parallel.DistributedDataParallel(netD, device_ids=[gpu])
 
     # Wavelet Pooling
@@ -388,7 +395,7 @@ if __name__ == '__main__':
                             help='channel multiplier')
     parser.add_argument('--num_res_blocks', type=int, default=2,
                             help='number of resnet blocks per scale')
-    parser.add_argument('--attn_resolutions', default=(16,),
+    parser.add_argument('--attn_resolutions', default=(16,), type=int, nargs='+',
                             help='resolution of applying attention')
     parser.add_argument('--dropout', type=float, default=0.,
                             help='drop-out rate')
@@ -451,6 +458,8 @@ if __name__ == '__main__':
     parser.add_argument("--train_mode", default="only_ll")
     parser.add_argument("--use_pytorch_wavelet", action="store_true")
     parser.add_argument("--rec_loss", action="store_true")
+    parser.add_argument("--net_type", default="normal")
+    parser.add_argument("--num_disc_layers", default=6, type=int)
 
 
     parser.add_argument('--save_content', action='store_true',default=False)

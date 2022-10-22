@@ -13,40 +13,11 @@ import os
 import time
 
 import torchvision
-from score_sde.models.ncsnpp_generator_adagn import NCSNpp
+from score_sde.models.ncsnpp_generator_adagn import NCSNpp, WaveletNCSNpp
 from pytorch_fid.fid_score import calculate_fid_given_paths
 from diffusion import *
 from DWT_IDWT.DWT_IDWT_layer import DWT_2D, IDWT_2D
 from pytorch_wavelets import DWTForward, DWTInverse
-from train_multiscale_wddgan import cond_sample_from_model
-
-def sample_from_cascaded_models(args, iwt, T, pos_coeff, generators, x_t_1_list, device):
-    # generate ll first
-    ll_sample = sample_from_model(pos_coeff, generators[0], args.num_timesteps, x_t_1_list[0], T, args) * (2*args.num_wavelet_levels)
-    # print(ll_sample.min(), ll_sample.max())
-    
-    # then generate hi coeffs for IWT
-    ll_list = []
-    for i, (netG, x_t_1) in enumerate(zip(generators[1:], x_t_1_list[1:])):
-        ll_list.append(ll_sample)
-        scale = 2.*(args.num_wavelet_levels - i)
-        ll_sample = ll_sample / scale # to [-1,1]
-        ll_sample = torch.clamp(ll_sample, -1, 1)
-        hi_sample = cond_sample_from_model(pos_coeff, netG, args.num_timesteps, x_t_1, T, args, cond=ll_sample)
-    
-        # scale to its original range
-        ll_sample = ll_sample * scale 
-        hi_sample = hi_sample * scale
-        lh_sample = hi_sample[:, :3]
-        hl_sample = hi_sample[:, 3:6]
-        hh_sample = hi_sample[:, 6:9]
-        # iwt
-        ll_sample = iwt((ll_sample, [torch.stack((lh_sample, hl_sample, hh_sample), dim=2)]))
-        # print(ll_sample.min(), ll_sample.max(), scale)
-    
-    # print(ll_sample.min(), ll_sample.max())
-    fake_sample = torch.clamp(ll_sample, -1, 1)
-    return fake_sample, ll_list
 
 #%%
 def sample_and_test(args):
@@ -62,55 +33,32 @@ def sample_and_test(args):
     else:
         real_img_dir = args.real_img_dir
 
-
-    assert args.num_wavelet_levels == (len(args.exp)-1)
     to_range_0_1 = lambda x: (x + 1.) / 2.
 
-    CH_MULT = {
-        32: [1, 2, 2, 2],
-        64: [1, 2, 2, 2, 4],
-        128: [1, 1, 2, 2, 4, 4],
-        256: [1, 1, 2, 2, 4, 4],
-    }
-    
-    root_dir = './saved_info/multiscale_wdd_gan/{}'.format(args.dataset)
-    generators = []
-    resolutions = [args.image_size//2**i for i in range(args.num_wavelet_levels, 0, -1)]
-    current_resolution = resolutions[0]
+    if args.infer_mode == "only_ll":
+        args.num_channels = 3 # low-res or wavelet-coefficients training
+    elif args.infer_mode == "only_hi":
+        args.num_channels = 9 # low-res or wavelet-coefficients training
+    elif args.infer_mode == "both":
+        args.num_channels = 12
 
-    for i in range(args.num_wavelet_levels+1):
-        epoch_id = args.epoch_id[i]
-        exp_path = args.exp[i]
-        gen_args = copy.copy(args)
-        print("Load pretrained generators at {} with {} epochs".format(exp_path, epoch_id))
-        if "hi" not in exp_path:
-            gen_args.num_channels = 3
-            # gen_args.num_channels_dae = 128
-        else: # hi
-            gen_args.num_channels = 12
-            gen_args.num_out_channels = 9 
-            # gen_args.num_channels_dae = 64
-        
+    args.ori_image_size = args.image_size
+    args.image_size = args.current_resolution
+    print(args.image_size, args.ch_mult, args.attn_resolutions)
 
-        gen_args.image_size = current_resolution
-        gen_args.ch_mult = CH_MULT[current_resolution]
-        # gen_args.ch_mult = CH_MULT[256]
-        print(gen_args.ch_mult, gen_args.image_size)
+    G_NET_ZOO = {"normal": NCSNpp, "wavelet": WaveletNCSNpp}
+    gen_net = G_NET_ZOO[args.net_type]
+    print("GEN: {}".format(gen_net))
 
-        netG = NCSNpp(gen_args).to(device)
+    netG = gen_net(args).to(device)
+    ckpt = torch.load('./saved_info/wdd_gan/{}/{}/netG_{}.pth'.format(args.dataset, args.exp, args.epoch_id), map_location=device)
 
-        # load weights
-        ckpt_path = '{}/{}/netG_{}.pth'.format(root_dir, exp_path, epoch_id)
-        ckpt = torch.load(ckpt_path, map_location=device)
-        #loading weights from ddp in single gpu
-        for key in list(ckpt.keys()):
-            ckpt[key[7:]] = ckpt.pop(key)
-        netG.load_state_dict(ckpt)
-        netG.eval()
+    #loading weights from ddp in single gpu
+    for key in list(ckpt.keys()):
+        ckpt[key[7:]] = ckpt.pop(key)
+    netG.load_state_dict(ckpt)
+    netG.eval()
 
-        generators.append(netG)
-        if "hi" in exp_path:
-            current_resolution *= 2
     
     iwt = DWTInverse(mode='zero', wave='haar').cuda()
     T = get_time_schedule(args, device)
@@ -119,24 +67,24 @@ def sample_and_test(args):
         
     iters_needed = 50000 //args.batch_size
     
-    save_dir = "./generated_multiscale_wavelets_samples/{}".format(args.dataset)
+    save_dir = "./generated_samples/{}".format(args.dataset)
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
     if args.measure_time:
-        x_t_1_list = [torch.randn(args.batch_size, 3, resolutions[0], resolutions[0]).to(device)] + [torch.randn(args.batch_size, 9, res, res).to(device) for res in resolutions]
+        x_t_1 = torch.randn(args.batch_size, args.num_channels, args.image_size, args.image_size)
         # INIT LOGGERS
         starter, ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
         repetitions = 300
         timings = np.zeros((repetitions,1))
         # GPU-WARM-UP
         for _ in range(10):
-            _ = sample_from_cascaded_models(args, iwt, T, pos_coeff, generators, x_t_1_list, device)
+            _ = sample_from_model(pos_coeff, netG, args.num_timesteps, x_t_1, T, args)
         # MEASURE PERFORMANCE
         with torch.no_grad():
             for rep in range(repetitions):
                 starter.record()
-                _ = sample_from_cascaded_models(args, iwt, T, pos_coeff, generators, x_t_1_list, device)
+                _ = sample_from_model(pos_coeff, netG, args.num_timesteps, x_t_1, T, args)
                 ender.record()
                 # WAIT FOR GPU SYNC
                 torch.cuda.synchronize()
@@ -151,34 +99,42 @@ def sample_and_test(args):
     if args.compute_fid:
         for i in range(iters_needed):
             with torch.no_grad():
-                x_t_1_list = [torch.randn(args.batch_size, 3, resolutions[0], resolutions[0]).to(device)] + [torch.randn(args.batch_size, 9, res, res).to(device) for res in resolutions]
-                fake_sample, _ = sample_from_cascaded_models(args, iwt, T, pos_coeff, generators, x_t_1_list, device)
-                fake_sample = to_range_0_1(fake_sample)
+                x_t_1 = torch.randn(args.batch_size, args.num_channels,args.image_size, args.image_size).to(device)
+                fake_sample = sample_from_model(pos_coeff, netG, args.num_timesteps, x_t_1,T,  args)
+                
+                if args.infer_mode == "both":
+                    fake_sample *= 2
+                    if not args.use_pytorch_wavelet:
+                         fake_sample = iwt(fake_sample[:, :3], fake_sample[:, 3:6], fake_sample[:, 6:9], fake_sample[:, 9:12])
+                    else:
+                        fake_sample = iwt((fake_sample[:, :3], [torch.stack((fake_sample[:, 3:6], fake_sample[:, 6:9], fake_sample[:, 9:12]), dim=2)]))
+                    fake_sample = torch.clamp(fake_sample, -1, 1)
+
+                fake_sample = to_range_0_1(fake_sample) # 0-1
                 for j, x in enumerate(fake_sample):
                     index = i * args.batch_size + j 
                     torchvision.utils.save_image(x, '{}/{}.jpg'.format(save_dir, index))
                 print('generating batch ', i)
         
         paths = [save_dir, real_img_dir]
+        print(paths)
     
         kwargs = {'batch_size': 100, 'device': device, 'dims': 2048}
         fid = calculate_fid_given_paths(paths=paths, **kwargs)
         print('FID = {}'.format(fid))
     else:
-        x_t_1_list = [torch.randn(args.batch_size, 3, resolutions[0], resolutions[0]).to(device)] + [torch.randn(args.batch_size, 9, res, res).to(device) for res in resolutions]
-        fake_sample, ll_list = sample_from_cascaded_models(args, iwt, T, pos_coeff, generators, x_t_1_list, device)
-        fake_sample = to_range_0_1(fake_sample)
-        
-        scale = 2*args.num_wavelet_levels
-        for i, xll in enumerate(ll_list):
-            xll = xll / scale
-            print(scale, xll.shape, xll.min(), xll.max())
-            xll = torch.clamp(xll, -1, 1)
-            
-            torchvision.utils.save_image(xll, 'samples_ll{}_{}.jpg'.format(resolutions[i], args.dataset))
-            scale = scale / 2.
+        x_t_1 = torch.randn(args.batch_size, args.num_channels,args.image_size, args.image_size).to(device)
+        fake_sample = sample_from_model(pos_coeff, netG, args.num_timesteps, x_t_1,T,  args)
+        if args.infer_mode == "both":
+            fake_sample *= 2
+            if not args.use_pytorch_wavelet:
+                 fake_sample = iwt(fake_sample[:, :3], fake_sample[:, 3:6], fake_sample[:, 6:9], fake_sample[:, 9:12])
+            else:
+                fake_sample = iwt((fake_sample[:, :3], [torch.stack((fake_sample[:, 3:6], fake_sample[:, 6:9], fake_sample[:, 9:12]), dim=2)]))
+            fake_sample = torch.clamp(fake_sample, -1, 1)
 
-        torchvision.utils.save_image(fake_sample, 'samples_{}.jpg'.format(args.dataset))
+        fake_sample = to_range_0_1(fake_sample) # 0-1
+        torchvision.utils.save_image(fake_sample, './samples_{}.jpg'.format(args.dataset))
         print("Results are saved at samples_{}.jpg".format(args.dataset))
             
 
@@ -190,7 +146,7 @@ if __name__ == '__main__':
                             help='whether or not compute FID')
     parser.add_argument('--measure_time', action='store_true', default=False,
                             help='whether or not measure time')
-    parser.add_argument('--epoch_id', type=int, nargs="+", default=1000)
+    parser.add_argument('--epoch_id', type=int, default=1000)
     parser.add_argument('--num_channels', type=int, default=3,
                             help='channel of image')
     parser.add_argument('--centered', action='store_false', default=True,
@@ -212,7 +168,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--num_res_blocks', type=int, default=2,
                             help='number of resnet blocks per scale')
-    parser.add_argument('--attn_resolutions', default=(16,),
+    parser.add_argument('--attn_resolutions', default=(16,), type=int, nargs='+',
                             help='resolution of applying attention')
     parser.add_argument('--dropout', type=float, default=0.,
                             help='drop-out rate')
@@ -242,7 +198,7 @@ if __name__ == '__main__':
     parser.add_argument('--not_use_tanh', action='store_true',default=False)
 
     #geenrator and training
-    parser.add_argument('--exp', default='experiment_cifar_default', nargs="+", help='name of experiment')
+    parser.add_argument('--exp', default='experiment_cifar_default', help='name of experiment')
     parser.add_argument('--real_img_dir', default='./pytorch_fid/cifar10_train_stat.npy', help='directory to real images for FID computation')
 
     parser.add_argument('--dataset', default='cifar10', help='name of dataset')
@@ -258,8 +214,10 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=200, help='sample generating batch size')
         
     # wavelet GAN
-    parser.add_argument("--num_wavelet_levels", default=2, type=int)
     parser.add_argument("--use_pytorch_wavelet", action="store_true")
+    parser.add_argument("--infer_mode", default="only_ll")
+    parser.add_argument("--current_resolution", type=int, default=256)
+    parser.add_argument("--net_type", default="normal")
 
 
 
