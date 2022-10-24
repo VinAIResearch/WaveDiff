@@ -123,8 +123,8 @@ def train(rank, gpu, args):
     broadcast_params(netG.parameters())
     broadcast_params(netD.parameters())
 
-    optimizerD = optim.Adam(netD.parameters(), lr=args.lr_d, betas = (args.beta1, args.beta2))
-    optimizerG = optim.Adam(netG.parameters(), lr=args.lr_g, betas = (args.beta1, args.beta2))
+    optimizerD = optim.Adam(filter(lambda p: p.requires_grad, netD.parameters()), lr=args.lr_d, betas = (args.beta1, args.beta2))
+    optimizerG = optim.Adam(filter(lambda p: p.requires_grad, netG.parameters()), lr=args.lr_g, betas = (args.beta1, args.beta2))
 
 
     if args.use_ema:
@@ -146,7 +146,7 @@ def train(rank, gpu, args):
 
 
     #ddp
-    netG = nn.parallel.DistributedDataParallel(netG, device_ids=[gpu], find_unused_parameters=True) # 
+    netG = nn.parallel.DistributedDataParallel(netG, device_ids=[gpu], find_unused_parameters=False) # 
     netD = nn.parallel.DistributedDataParallel(netD, device_ids=[gpu])
     if args.two_disc:
         netD_freq = nn.parallel.DistributedDataParallel(netD_freq, device_ids=[gpu])
