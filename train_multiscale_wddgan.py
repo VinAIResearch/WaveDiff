@@ -329,6 +329,7 @@ def train(rank, gpu, args):
                 else:
                     fake_sample = iwt((scale*xll, [scale*torch.stack((fake_sample[:, :3], fake_sample[:, 3:6], fake_sample[:, 6:9]), dim=2)]))
                     real_data = iwt((scale*xll, [scale*torch.stack((real_data[:, :3], real_data[:, 3:6], real_data[:, 6:9]), dim=2)]))
+                    # 64 -> 128: -2, 2, 128->256: -1, 1
             
             elif args.train_mode == "both":
                 fake_sample = sample_from_model(pos_coeff, netG, args.num_timesteps, x_t_1, T, args)

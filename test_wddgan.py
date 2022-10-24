@@ -28,6 +28,7 @@ def sample_and_test(args):
         real_img_dir = 'pytorch_fid/cifar10_train_stat.npy'
     elif args.dataset == 'celeba_256':
         real_img_dir = 'pytorch_fid/celebahq_stat.npy'
+        # real_img_dir = 'pytorch_fid/celeba_ll_64.npy'
     # elif args.dataset == 'lsun':
     #     real_img_dir = 'pytorch_fid/lsun_church_stat.npy'
     else:
@@ -52,11 +53,22 @@ def sample_and_test(args):
 
     netG = gen_net(args).to(device)
     ckpt = torch.load('./saved_info/wdd_gan/{}/{}/netG_{}.pth'.format(args.dataset, args.exp, args.epoch_id), map_location=device)
+    # ckpt = torch.load('./saved_info/multiscale_wdd_gan/{}/{}/netG_{}.pth'.format(args.dataset, args.exp, args.epoch_id), map_location=device)
 
     #loading weights from ddp in single gpu
     for key in list(ckpt.keys()):
+        # new_key = key[7:] # drop module.
+        # if "Conv2d_0" in new_key:
+        #     new_key = new_key.replace(".Conv2d_0.", ".conv.")
+        #     print(key)
+        #     print(new_key)
+        # ckpt[new_key] = ckpt.pop(key)
+
         ckpt[key[7:]] = ckpt.pop(key)
-    netG.load_state_dict(ckpt)
+        
+    netG.load_state_dict(ckpt, strict=True)
+    # assert set(msg.missing_keys) == {'head.projection.weight', 'head.projection.bias'}
+
     netG.eval()
 
     

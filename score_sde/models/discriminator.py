@@ -127,7 +127,7 @@ class Discriminator_small(nn.Module):
         self.conv3 = DownConvBlock(ngf*4, ngf*8,  t_emb_dim = t_emb_dim, downsample=True,act=act)
 
         self.conv4 = None
-        if num_layers == 4:
+        if num_layers >= 4:
             self.conv4 = DownConvBlock(ngf*8, ngf*8, t_emb_dim = t_emb_dim, downsample=True,act=act)
         
         
@@ -293,15 +293,18 @@ class WaveletDownConvBlock(nn.Module):
         
         self.downsample = downsample
         
+        # out_channel = out_channel // 4
         self.conv1 = nn.Sequential(
                     conv2d(in_channel, out_channel, kernel_size, padding=padding),
                     )
 
         
+        self.dense_t1= dense(t_emb_dim, out_channel)
+
+        # out_channel = out_channel * 4
         self.conv2 = nn.Sequential(
                     conv2d(out_channel, out_channel, kernel_size, padding=padding,init_scale=0.)
                     )
-        self.dense_t1= dense(t_emb_dim, out_channel)
 
 
         self.act = act
@@ -325,14 +328,14 @@ class WaveletDownConvBlock(nn.Module):
             outLL, outH = self.dwt(out)
             outLH, outHL, outHH = torch.unbind(outH[0], dim=2)
             out = (outLL + outLH + outHL + outHH) / (2. * 4.)
+            # out = torch.cat((outLL, outLH, outHL, outHH), dim=1) / 2.
             
             inputLL, inputH = self.dwt(input)
             inputLH, inputHL, inputHH = torch.unbind(inputH[0], dim=2)
             input = (inputLL + inputLH + inputHL + inputHH) / (2. * 4.)
-            
+            # input = torch.cat((inputLL, inputLH, inputHL, inputHH), dim=1) / 2.
         out = self.conv2(out)
         
-
         skip = self.skip(input)
         out = (out + skip) / np.sqrt(2)
 
@@ -342,7 +345,7 @@ class WaveletDownConvBlock(nn.Module):
 class WaveletDiscriminator_small(nn.Module):
     """A time-dependent discriminator for small images (CIFAR10, StackMNIST)."""
 
-    def __init__(self, nc = 3, ngf = 64, t_emb_dim = 128, act=nn.LeakyReLU(0.2), patch_size=1, use_local_loss=False):
+    def __init__(self, nc = 3, ngf = 64, t_emb_dim = 128, act=nn.LeakyReLU(0.2), patch_size=1, use_local_loss=False, num_layers=4):
         super().__init__()
         self.patch_size = patch_size
         self.use_local_loss = use_local_loss
@@ -369,8 +372,9 @@ class WaveletDiscriminator_small(nn.Module):
         self.conv3 = WaveletDownConvBlock(ngf*4, ngf*8,  t_emb_dim = t_emb_dim, downsample=True,act=act)
 
         
-        self.conv4 = WaveletDownConvBlock(ngf*8, ngf*8, t_emb_dim = t_emb_dim, downsample=True,act=act)
-        
+        self.conv4 = None
+        if num_layers >= 4:
+            self.conv4 = WaveletDownConvBlock(ngf*8, ngf*8, t_emb_dim = t_emb_dim, downsample=True,act=act)
         
         self.final_conv = conv2d(ngf*8 + 1, ngf*8, 3, padding=1, init_scale=0.)
         self.end_linear = dense(ngf*8, 1)
@@ -397,8 +401,9 @@ class WaveletDiscriminator_small(nn.Module):
 
         h3 = self.conv3(h2,t_embed)
 
-        
-        out = self.conv4(h3,t_embed)
+        if self.conv4 is not None:
+            h3 = self.conv4(h3,t_embed)
+        out = h3
         
         batch, channel, height, width = out.shape
         group = min(batch, self.stddev_group)

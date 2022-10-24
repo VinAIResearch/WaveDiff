@@ -41,7 +41,7 @@ def sample_from_cascaded_models(args, iwt, T, pos_coeff, generators, x_t_1_list,
         hl_sample = hi_sample[:, 3:6]
         hh_sample = hi_sample[:, 6:9]
         # iwt
-        ll_sample = iwt((ll_sample, [torch.stack((lh_sample, hl_sample, hh_sample), dim=2)]))
+        ll_sample = iwt((ll_sample, [torch.stack((lh_sample, hl_sample, hh_sample), dim=2)])) # -2, 2
         # print(ll_sample.min(), ll_sample.max(), scale)
     
     # print(ll_sample.min(), ll_sample.max())

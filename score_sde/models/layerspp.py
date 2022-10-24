@@ -202,17 +202,17 @@ class WaveletDownsample(nn.Module):
     def __init__(self, in_ch=None, out_ch=None):
         super().__init__()
         out_ch = out_ch if out_ch else in_ch
-        self.weight = nn.Parameter(torch.zeros(out_ch, in_ch, 3, 3))
+        self.weight = nn.Parameter(torch.zeros(out_ch, in_ch*4, 3, 3))
         self.weight.data = default_init()(self.weight.data.shape)
         self.bias = nn.Parameter(torch.zeros(out_ch))
-        self.conv = conv3x3(in_ch, out_ch)
         
         self.dwt = DWTForward(J=1, mode='zero', wave='haar')
 
     def forward(self, x):
         xLL, xH = self.dwt(x)
         xLH, xHL, xHH = torch.unbind(xH[0], dim=2)
-        x = (xLL + xLH + xHL + xHH) / (2. * 4.)
+        # x = (xLL + xLH + xHL + xHH) / (2. * 4.)
+        x = torch.cat((xLL, xLH, xHL, xHH), dim=1) / 2.
 
         x = F.conv2d(x, self.weight, stride=1, padding=1)
         x = x + self.bias.reshape(1, -1, 1, 1)

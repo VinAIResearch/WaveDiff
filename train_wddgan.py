@@ -81,7 +81,7 @@ def train(rank, gpu, args):
     D_NET_ZOO = {"normal": [Discriminator_small, Discriminator_large], 
         "wavelet": [WaveletDiscriminator_small, WaveletDiscriminator_large]}
     gen_net = G_NET_ZOO[args.net_type]
-    disc_net = D_NET_ZOO[args.net_type]
+    disc_net = D_NET_ZOO[args.disc_net_type]
     print("GEN: {}, DISC: {}".format(gen_net, disc_net))
     if args.two_gens:
         gen_args1 = copy.deepcopy(args)
@@ -560,6 +560,7 @@ if __name__ == '__main__':
     parser.add_argument("--two_gens", action="store_true")
     parser.add_argument("--rec_loss", action="store_true")
     parser.add_argument("--net_type", default="normal")
+    parser.add_argument("--disc_net_type", default="normal")
     parser.add_argument("--num_disc_layers", default=6, type=int)
 
 
