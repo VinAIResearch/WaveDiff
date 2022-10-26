@@ -66,7 +66,7 @@ def sample_and_test(args):
 
         ckpt[key[7:]] = ckpt.pop(key)
         
-    netG.load_state_dict(ckpt, strict=True)
+    netG.load_state_dict(ckpt, strict=False)
     # assert set(msg.missing_keys) == {'head.projection.weight', 'head.projection.bias'}
 
     netG.eval()
@@ -84,7 +84,7 @@ def sample_and_test(args):
         os.makedirs(save_dir)
 
     if args.measure_time:
-        x_t_1 = torch.randn(args.batch_size, args.num_channels, args.image_size, args.image_size)
+        x_t_1 = torch.randn(args.batch_size, args.num_channels, args.image_size, args.image_size).to(device)
         # INIT LOGGERS
         starter, ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
         repetitions = 300
