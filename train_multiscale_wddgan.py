@@ -323,6 +323,16 @@ def train(rank, gpu, args):
                 fake_sample = sample_from_model(pos_coeff, netG, args.num_timesteps, x_t_1, T, args)
             elif args.train_mode == "only_hi":
                 fake_sample = cond_sample_from_model(pos_coeff, netG, args.num_timesteps, x_t_1, T, args, cond=xll)
+                # save fake
+                torchvision.utils.save_image(fake_sample[:, :3], os.path.join(exp_path, 'sample_discrete_lh_epoch_{}.png'.format(epoch)))
+                torchvision.utils.save_image(fake_sample[:, 3:6], os.path.join(exp_path, 'sample_discrete_hl_epoch_{}.png'.format(epoch)))
+                torchvision.utils.save_image(fake_sample[:, 6:9], os.path.join(exp_path, 'sample_discrete_hh_epoch_{}.png'.format(epoch)))
+
+                # save real
+                torchvision.utils.save_image(real_data[:, :3], os.path.join(exp_path, 'real_lh_data.png'))
+                torchvision.utils.save_image(real_data[:, 3:6], os.path.join(exp_path, 'real_hl_data.png'))
+                torchvision.utils.save_image(real_data[:, 6:9], os.path.join(exp_path, 'real_hh_data.png'))
+            
                 if not args.use_pytorch_wavelet:
                     fake_sample = iwt(scale*xll, scale*fake_sample[:, :3], scale*fake_sample[:, 3:6], scale*fake_sample[:, 6:9])
                     real_data = iwt(scale*xll, scale*real_data[:, :3], scale*real_data[:, 3:6], scale*real_data[:, 6:9])
@@ -330,6 +340,7 @@ def train(rank, gpu, args):
                     fake_sample = iwt((scale*xll, [scale*torch.stack((fake_sample[:, :3], fake_sample[:, 3:6], fake_sample[:, 6:9]), dim=2)]))
                     real_data = iwt((scale*xll, [scale*torch.stack((real_data[:, :3], real_data[:, 3:6], real_data[:, 6:9]), dim=2)]))
                     # 64 -> 128: -2, 2, 128->256: -1, 1
+
             
             elif args.train_mode == "both":
                 fake_sample = sample_from_model(pos_coeff, netG, args.num_timesteps, x_t_1, T, args)
