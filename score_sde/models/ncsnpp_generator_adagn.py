@@ -42,6 +42,9 @@ from einops import rearrange
 ResnetBlockDDPM = layerspp.ResnetBlockDDPMpp_Adagn
 ResnetBlockBigGAN = layerspp.ResnetBlockBigGANpp_Adagn
 ResnetBlockBigGAN_one = layerspp.ResnetBlockBigGANpp_Adagn_one
+
+WaveletResnetBlockBigGAN = layerspp.WaveletResnetBlockBigGANpp_Adagn
+
 Combine = layerspp.Combine
 conv3x3 = layerspp.conv3x3
 conv1x1 = layerspp.conv1x1
@@ -448,6 +451,7 @@ class NCSNpp(nn.Module):
 
 
 from pytorch_wavelets import DWTForward, DWTInverse
+from DWT_IDWT.DWT_IDWT_layer import DWT_2D, IDWT_2D
 @utils.register_model(name='wavelet_ncsnpp')
 class WaveletNCSNpp(NCSNpp):
     """NCSN++ model"""
@@ -544,11 +548,18 @@ class WaveletNCSNpp(NCSNpp):
                                             zemb_dim = z_emb_dim)
 
         elif resblock_type == 'biggan':
-            ResnetBlock = functools.partial(ResnetBlockBigGAN,
+            # ResnetBlock = functools.partial(ResnetBlockBigGAN,
+            #                                 act=act,
+            #                                 dropout=dropout,
+            #                                 fir=fir,
+            #                                 fir_kernel=fir_kernel,
+            #                                 init_scale=init_scale,
+            #                                 skip_rescale=skip_rescale,
+            #                                 temb_dim=nf * 4,
+            #                                 zemb_dim = z_emb_dim)
+            ResnetBlock = functools.partial(WaveletResnetBlockBigGAN,
                                             act=act,
                                             dropout=dropout,
-                                            fir=fir,
-                                            fir_kernel=fir_kernel,
                                             init_scale=init_scale,
                                             skip_rescale=skip_rescale,
                                             temb_dim=nf * 4,
@@ -575,6 +586,7 @@ class WaveletNCSNpp(NCSNpp):
 
         modules.append(conv3x3(channels, nf))
         hs_c = [nf]
+        hs_c2 = [nf]
 
         in_ch = nf
         for i_level in range(num_resolutions):
@@ -588,7 +600,9 @@ class WaveletNCSNpp(NCSNpp):
                     modules.append(AttnBlock(channels=in_ch))
                 hs_c.append(in_ch)
 
+
             if i_level != num_resolutions - 1:
+                hs_c2.append(in_ch)
                 if resblock_type == 'ddpm':
                     modules.append(Downsample(in_ch=in_ch))
                 else:
@@ -609,6 +623,7 @@ class WaveletNCSNpp(NCSNpp):
         modules.append(ResnetBlock(in_ch=in_ch))
         modules.append(AttnBlock(channels=in_ch))
         modules.append(ResnetBlock(in_ch=in_ch))
+
 
         pyramid_ch = 0
         # Upsampling block
@@ -652,7 +667,8 @@ class WaveletNCSNpp(NCSNpp):
                 if resblock_type == 'ddpm':
                     modules.append(Upsample(in_ch=in_ch))
                 else:
-                    modules.append(ResnetBlock(in_ch=in_ch, up=True))
+                    # modules.append(ResnetBlock(in_ch=in_ch, up=True))
+                    modules.append(ResnetBlock(in_ch=in_ch, up=True, hi_in_ch=hs_c2.pop()))
 
         assert not hs_c
 
@@ -673,11 +689,11 @@ class WaveletNCSNpp(NCSNpp):
             mapping_layers.append(self.act)
         self.z_transform = nn.Sequential(*mapping_layers)
         
+        # self.dwt = DWTForward(J=1, mode='zero', wave='haar').cuda()
+        # self.iwt = DWTInverse(mode='zero', wave='haar').cuda()
 
-
-
-        self.dwt = DWTForward(J=1, mode='zero', wave='haar')
-        self.iwt = DWTInverse(mode='zero', wave='haar')
+        self.dwt = DWT_2D("haar")
+        self.iwt = IDWT_2D("haar")
 
     def forward(self, x, time_cond, z): # return_mid=False
         # patchify
@@ -719,7 +735,7 @@ class WaveletNCSNpp(NCSNpp):
             input_pyramid = x
 
         hs = [modules[m_idx](x)]
-        hHs = []
+        skipHs = []
         m_idx += 1
         for i_level in range(self.num_resolutions):
             # Residual blocks for this resolution
@@ -737,15 +753,17 @@ class WaveletNCSNpp(NCSNpp):
                 hs.append(h)
 
             if i_level != self.num_resolutions - 1:
-                # reconstruction
-                hL, hH = self.dwt(hs[-1])
-                h = self.iwt((hL, hH))
+                # # reconstruction
+                # hL, hH = self.dwt(hs[-1])
+                # h = self.iwt((hL, hH))
 
                 if self.resblock_type == 'ddpm':
                     h = modules[m_idx](h)
                     m_idx += 1
                 else:
-                    h = modules[m_idx](h, temb, zemb)
+                    # h = modules[m_idx](h, temb, zemb)
+                    h, skipH = modules[m_idx](h, temb, zemb)
+                    skipHs.append(skipH)
                     m_idx += 1
 
                 if self.progressive_input == 'input_skip':
@@ -767,9 +785,14 @@ class WaveletNCSNpp(NCSNpp):
 
         h = hs[-1]
         # h = modules[m_idx](h, temb, zemb)
-        h, hH = self.dwt(h)
+
+        # h, hH = self.dwt(h)
+        # h = modules[m_idx](h/2., temb, zemb)
+        # h = self.iwt((h*2., hH))
+
+        h, hlh, hhl, hhh = self.dwt(h)
         h = modules[m_idx](h/2., temb, zemb)
-        h = self.iwt((h*2., hH))
+        h = self.iwt(h*2., hlh, hhl, hhh)
         m_idx += 1
 
         # attn block        
@@ -777,9 +800,13 @@ class WaveletNCSNpp(NCSNpp):
         m_idx += 1
 
         # h = modules[m_idx](h, temb, zemb)
-        h, hH = self.dwt(h)
+        # h, hH = self.dwt(h)
+        # h = modules[m_idx](h/2., temb, zemb)
+        # h = self.iwt((h*2., hH))
+
+        h, hlh, hhl, hhh = self.dwt(h)
         h = modules[m_idx](h/2., temb, zemb)
-        h = self.iwt((h*2., hH))
+        h = self.iwt(h*2., hlh, hhl, hhh)
         m_idx += 1
 
         mid_out = h
@@ -790,12 +817,6 @@ class WaveletNCSNpp(NCSNpp):
         for i_level in reversed(range(self.num_resolutions)):
             for i_block in range(self.num_res_blocks + 1):
                 h = modules[m_idx](torch.cat([h, hs.pop()], dim=1), temb, zemb)
-                # h, hH = self.dwt(h)
-                # skip, skipH = self.dwt(hs.pop())
-                # skipLH, skipHL, skipHH = torch.unbind(skipH[0], dim=2)
-                # skip = (skip + skipLH + skipHL + skipHH) / (2. * 4.)
-                # h = modules[m_idx](torch.cat([h, skip], dim=1), temb, zemb)
-                # h = self.iwt((h, hH))
 
                 m_idx += 1
 
@@ -804,9 +825,9 @@ class WaveletNCSNpp(NCSNpp):
                 m_idx += 1
 
             if self.progressive != 'none':
-                # reconstruction
-                hL, hH = self.dwt(h)
-                h = self.iwt((hL, hH))
+                # # reconstruction
+                # hL, hH = self.dwt(h)
+                # h = self.iwt((hL, hH))
 
                 if i_level == self.num_resolutions - 1:
                     if self.progressive == 'output_skip':
@@ -845,7 +866,9 @@ class WaveletNCSNpp(NCSNpp):
                     h = modules[m_idx](h)
                     m_idx += 1
                 else:
-                    h = modules[m_idx](h, temb, zemb)
+                    # h = modules[m_idx](h, temb, zemb)
+                    h = modules[m_idx](h, temb, zemb, skipH=skipHs.pop())
+
                     m_idx += 1
 
         assert not hs

@@ -81,8 +81,8 @@ class EMA(Optimizer):
             for i, p in enumerate(group['params']):
                 if not p.requires_grad:
                     continue
-                # ema = self.optimizer.state[p]['ema']
-                ema = self.optimizer.state[p].get('ema', p.data.clone())
+                ema = self.optimizer.state[p]['ema']
+                # ema = self.optimizer.state[p].get('ema', p.data.clone())
                 if store_params_in_ema:
                     tmp = p.data.detach()
                     p.data = ema.detach()

@@ -22,7 +22,7 @@ from train_multiscale_wddgan import cond_sample_from_model
 
 def sample_from_cascaded_models(args, iwt, T, pos_coeff, generators, x_t_1_list, device):
     # generate ll first
-    ll_sample = sample_from_model(pos_coeff, generators[0], args.num_timesteps, x_t_1_list[0], T, args) * (2*args.num_wavelet_levels)
+    ll_sample = sample_from_model(pos_coeff[0], generators[0], args.num_timesteps_list[0], x_t_1_list[0], T[0], args) * (2*args.num_wavelet_levels)
     # print(ll_sample.min(), ll_sample.max())
     
     # then generate hi coeffs for IWT
@@ -32,7 +32,7 @@ def sample_from_cascaded_models(args, iwt, T, pos_coeff, generators, x_t_1_list,
         scale = 2.*(args.num_wavelet_levels - i)
         ll_sample = ll_sample / scale # to [-1,1]
         ll_sample = torch.clamp(ll_sample, -1, 1)
-        hi_sample = cond_sample_from_model(pos_coeff, netG, args.num_timesteps, x_t_1, T, args, cond=ll_sample)
+        hi_sample = cond_sample_from_model(pos_coeff[i+1], netG, args.num_timesteps_list[i+1], x_t_1, T[i+1], args, cond=ll_sample)
     
         # scale to its original range
         ll_sample = ll_sample * scale 
@@ -41,7 +41,7 @@ def sample_from_cascaded_models(args, iwt, T, pos_coeff, generators, x_t_1_list,
         hl_sample = hi_sample[:, 3:6]
         hh_sample = hi_sample[:, 6:9]
         # iwt
-        ll_sample = iwt((ll_sample, [torch.stack((lh_sample, hl_sample, hh_sample), dim=2)])) # -2, 2
+        ll_sample = iwt((ll_sample, [torch.stack((lh_sample, hl_sample, hh_sample), dim=2)]))
         # print(ll_sample.min(), ll_sample.max(), scale)
     
     # print(ll_sample.min(), ll_sample.max())
@@ -68,8 +68,8 @@ def sample_and_test(args):
 
     CH_MULT = {
         32: [1, 2, 2, 2],
-        64: [1, 2, 2, 2, 4],
-        128: [1, 1, 2, 2, 4, 4],
+        64: [1, 2, 2, 2, 4], # [1, 2, 2, 2]
+        128: [1, 2, 2, 2, 4], # [1, 1, 2, 2, 4, 4]
         256: [1, 1, 2, 2, 4, 4],
     }
     
@@ -82,9 +82,10 @@ def sample_and_test(args):
         epoch_id = args.epoch_id[i]
         exp_path = args.exp[i]
         gen_args = copy.copy(args)
-        print("Load pretrained generators at {} with {} epochs".format(exp_path, epoch_id))
+        print("Load pretrained generators at {} at {} epochs".format(exp_path, epoch_id))
         if "hi" not in exp_path:
             gen_args.num_channels = 3
+            gen_args.num_out_channels = 3
             # gen_args.num_channels_dae = 128
         else: # hi
             gen_args.num_channels = 12
@@ -113,9 +114,17 @@ def sample_and_test(args):
             current_resolution *= 2
     
     iwt = DWTInverse(mode='zero', wave='haar').cuda()
-    T = get_time_schedule(args, device)
+
+    # T = get_time_schedule(args, device)
+    T = []
+    pos_coeff = []
+    args.num_timesteps_list = args.num_timesteps
+    for nT in args.num_timesteps_list:
+        t_args = copy.deepcopy(args)
+        t_args.num_timesteps = nT
+        T.append(get_time_schedule(t_args, device))
+        pos_coeff.append(Posterior_Coefficients(t_args, device))
     
-    pos_coeff = Posterior_Coefficients(args, device)
         
     iters_needed = 50000 //args.batch_size
     
@@ -250,8 +259,7 @@ if __name__ == '__main__':
                             help='size of image')
 
     parser.add_argument('--nz', type=int, default=100)
-    parser.add_argument('--num_timesteps', type=int, default=4)
-
+    parser.add_argument('--num_timesteps', type=int, nargs='+', default=[4])
 
     parser.add_argument('--z_emb_dim', type=int, default=256)
     parser.add_argument('--t_emb_dim', type=int, default=256)

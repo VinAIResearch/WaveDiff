@@ -71,7 +71,7 @@ def train(rank, gpu, args):
     data_loader = torch.utils.data.DataLoader(dataset,
                                                batch_size=batch_size,
                                                shuffle=False,
-                                               num_workers=4,
+                                               num_workers=args.num_workers,
                                                pin_memory=True,
                                                sampler=train_sampler,
                                                drop_last = True)
@@ -146,7 +146,7 @@ def train(rank, gpu, args):
 
 
     #ddp
-    netG = nn.parallel.DistributedDataParallel(netG, device_ids=[gpu], find_unused_parameters=False) # 
+    netG = nn.parallel.DistributedDataParallel(netG, device_ids=[gpu], find_unused_parameters=False)
     netD = nn.parallel.DistributedDataParallel(netD, device_ids=[gpu])
     if args.two_disc:
         netD_freq = nn.parallel.DistributedDataParallel(netD_freq, device_ids=[gpu])
@@ -581,6 +581,8 @@ if __name__ == '__main__':
                         help='address for master')
     parser.add_argument('--master_port', type=str, default='6002',
                         help='port for master')
+    parser.add_argument('--num_workers', type=int, default=4,
+                        help='num_workers')
 
 
     args = parser.parse_args()

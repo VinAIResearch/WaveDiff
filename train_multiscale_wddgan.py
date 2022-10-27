@@ -97,8 +97,8 @@ def train(rank, gpu, args):
     args.image_size = args.current_resolution
     CH_MULT = {
         32: [1, 2, 2, 2],
-        64: [1, 2, 2, 2, 4],
-        128: [1, 1, 2, 2, 4, 4],
+        64: [1, 2, 2, 2], # [1, 2, 2, 2, 4],
+        128: [1, 2, 2, 2, 4], # [1, 1, 2, 2, 4, 4],
         256: [1, 1, 2, 2, 4, 4],
     }
     # TODO: changing arch for each resolution
@@ -144,7 +144,7 @@ def train(rank, gpu, args):
 
 
     #ddp
-    netG = nn.parallel.DistributedDataParallel(netG, device_ids=[gpu], find_unused_parameters=True) # prevent error
+    netG = nn.parallel.DistributedDataParallel(netG, device_ids=[gpu])
     netD = nn.parallel.DistributedDataParallel(netD, device_ids=[gpu])
 
     # Wavelet Pooling
@@ -342,6 +342,8 @@ def train(rank, gpu, args):
                     fake_sample = iwt((fake_sample[:, :3], [torch.stack((fake_sample[:, 3:6], fake_sample[:, 6:9], fake_sample[:, 9:12]), dim=2)]))
                     real_data = iwt((real_data[:, :3], [torch.stack((real_data[:, 3:6], real_data[:, 6:9], real_data[:, 9:12]), dim=2)]))
 
+            fake_sample = fake_sample * (2 / scale)
+            real_data = real_data * (2 / scale)
             fake_sample = (torch.clamp(fake_sample, -1, 1) + 1)/2 # 0-1
             real_data = (torch.clamp(real_data, -1, 1) + 1)/2 # 0-1
 
