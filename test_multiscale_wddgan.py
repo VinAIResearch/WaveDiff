@@ -188,10 +188,10 @@ def sample_and_test(args):
             xll = torch.clamp(xll, -1, 1)
             xhi = xhi / scale
             
-            torchvision.utils.save_image(xll, 'samples_ll{}_{}.jpg'.format(resolutions[i], args.dataset))
-            torchvision.utils.save_image(xhi[:, :3], 'samples_lh{}_{}.jpg'.format(resolutions[i], args.dataset))
-            torchvision.utils.save_image(xhi[:, 3:6], 'samples_hl{}_{}.jpg'.format(resolutions[i], args.dataset))
-            torchvision.utils.save_image(xhi[:, 6:9], 'samples_hh{}_{}.jpg'.format(resolutions[i], args.dataset))
+            torchvision.utils.save_image(to_range_0_1(xll), 'samples_ll{}_{}.jpg'.format(resolutions[i], args.dataset))
+            torchvision.utils.save_image(to_range_0_1(xhi[:, :3]), 'samples_lh{}_{}.jpg'.format(resolutions[i], args.dataset))
+            torchvision.utils.save_image(to_range_0_1(xhi[:, 3:6]), 'samples_hl{}_{}.jpg'.format(resolutions[i], args.dataset))
+            torchvision.utils.save_image(to_range_0_1(xhi[:, 6:9]), 'samples_hh{}_{}.jpg'.format(resolutions[i], args.dataset))
             scale = scale / 2.
 
         torchvision.utils.save_image(fake_sample, 'samples_{}.jpg'.format(args.dataset))

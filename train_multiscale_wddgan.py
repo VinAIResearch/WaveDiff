@@ -324,14 +324,14 @@ def train(rank, gpu, args):
             elif args.train_mode == "only_hi":
                 fake_sample = cond_sample_from_model(pos_coeff, netG, args.num_timesteps, x_t_1, T, args, cond=xll)
                 # save fake
-                torchvision.utils.save_image(fake_sample[:, :3], os.path.join(exp_path, 'sample_discrete_lh_epoch_{}.png'.format(epoch)))
-                torchvision.utils.save_image(fake_sample[:, 3:6], os.path.join(exp_path, 'sample_discrete_hl_epoch_{}.png'.format(epoch)))
-                torchvision.utils.save_image(fake_sample[:, 6:9], os.path.join(exp_path, 'sample_discrete_hh_epoch_{}.png'.format(epoch)))
+                torchvision.utils.save_image(fake_sample[:, :3], os.path.join(exp_path, 'sample_discrete_lh_epoch_{}.png'.format(epoch)), normalize=True)
+                torchvision.utils.save_image(fake_sample[:, 3:6], os.path.join(exp_path, 'sample_discrete_hl_epoch_{}.png'.format(epoch)), normalize=True)
+                torchvision.utils.save_image(fake_sample[:, 6:9], os.path.join(exp_path, 'sample_discrete_hh_epoch_{}.png'.format(epoch)), normalize=True)
 
                 # save real
-                torchvision.utils.save_image(real_data[:, :3], os.path.join(exp_path, 'real_lh_data.png'))
-                torchvision.utils.save_image(real_data[:, 3:6], os.path.join(exp_path, 'real_hl_data.png'))
-                torchvision.utils.save_image(real_data[:, 6:9], os.path.join(exp_path, 'real_hh_data.png'))
+                torchvision.utils.save_image(real_data[:, :3], os.path.join(exp_path, 'real_lh_data.png'), normalize=True)
+                torchvision.utils.save_image(real_data[:, 3:6], os.path.join(exp_path, 'real_hl_data.png'), normalize=True)
+                torchvision.utils.save_image(real_data[:, 6:9], os.path.join(exp_path, 'real_hh_data.png'), normalize=True)
             
                 if not args.use_pytorch_wavelet:
                     fake_sample = iwt(scale*xll, scale*fake_sample[:, :3], scale*fake_sample[:, 3:6], scale*fake_sample[:, 6:9])
