@@ -424,6 +424,7 @@ class WaveletResnetBlockBigGANpp_Adagn(nn.Module):
     if not self.down:
         return out
     return out, xH
+    # return out, hH # new
   
 
 class ResnetBlockBigGANpp_Adagn_one(nn.Module):

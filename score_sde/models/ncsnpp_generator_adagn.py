@@ -741,10 +741,6 @@ class WaveletNCSNpp(NCSNpp):
             # Residual blocks for this resolution
             for i_block in range(self.num_res_blocks):
                 h = modules[m_idx](hs[-1], temb, zemb)
-                # hL, hH = self.dwt(hs[-1])
-                # h = modules[m_idx](hL/2., temb, zemb)
-                # TODO: iwt before/after attn block
-                # h = self.iwt((h*2., hH))
                 m_idx += 1
                 if h.shape[-1] in self.attn_resolutions:
                     h = modules[m_idx](h)
@@ -799,7 +795,7 @@ class WaveletNCSNpp(NCSNpp):
         h = modules[m_idx](h)
         m_idx += 1
 
-        # h = modules[m_idx](h, temb, zemb)
+        h = modules[m_idx](h, temb, zemb)
         # h, hH = self.dwt(h)
         # h = modules[m_idx](h/2., temb, zemb)
         # h = self.iwt((h*2., hH))
