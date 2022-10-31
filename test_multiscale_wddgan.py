@@ -22,13 +22,13 @@ from train_multiscale_wddgan import cond_sample_from_model
 
 def sample_from_cascaded_models(args, iwt, T, pos_coeff, generators, x_t_1_list, device):
     # generate ll first
-    ll_sample = sample_from_model(pos_coeff[0], generators[0], args.num_timesteps_list[0], x_t_1_list[0], T[0], args) * (2*args.num_wavelet_levels)
+    ll_sample = sample_from_model(pos_coeff[0], generators[0], args.num_timesteps_list[0], x_t_1_list[0], T[0], args) * (2**args.num_wavelet_levels)
     # print(ll_sample.min(), ll_sample.max())
     
     # then generate hi coeffs for IWT
     ll_list, hi_list = [], []
     for i, (netG, x_t_1) in enumerate(zip(generators[1:], x_t_1_list[1:])):
-        scale = 2.*(args.num_wavelet_levels - i)
+        scale = 2.**(args.num_wavelet_levels - i)
         ll_sample = ll_sample / scale # to [-1,1]
         ll_sample = torch.clamp(ll_sample, -1, 1)
         hi_sample = cond_sample_from_model(pos_coeff[i+1], netG, args.num_timesteps_list[i+1], x_t_1, T[i+1], args, cond=ll_sample)
@@ -71,8 +71,8 @@ def sample_and_test(args):
 
     CH_MULT = {
         32: [1, 2, 2, 2],
-        64: [1, 2, 2, 2, 4], # [1, 2, 2, 2]
-        128: [1, 1, 2, 2, 4, 4], # [1, 2, 2, 2, 4], 
+        64: [1, 2, 2, 2], # [1, 2, 2, 2, 4]
+        128: [1, 2, 2, 2, 4], # [1, 1, 2, 2, 4, 4]
         256: [1, 1, 2, 2, 4, 4],
     }
     
@@ -98,6 +98,7 @@ def sample_and_test(args):
 
         gen_args.image_size = current_resolution
         gen_args.ch_mult = CH_MULT[current_resolution]
+        gen_args.num_channels_dae = args.num_channels_dae[i]
         # gen_args.ch_mult = CH_MULT[256]
         print(gen_args.ch_mult, gen_args.image_size)
 
@@ -181,7 +182,7 @@ def sample_and_test(args):
         fake_sample, ll_list, hi_list = sample_from_cascaded_models(args, iwt, T, pos_coeff, generators, x_t_1_list, device)
         fake_sample = to_range_0_1(fake_sample)
         
-        scale = 2*args.num_wavelet_levels
+        scale = 2**args.num_wavelet_levels
         for i, (xll, xhi)  in enumerate(zip(ll_list, hi_list)):
             print("resolution {} with scale {}: ll range [{}, {}], hi range [{}, {}]".format(resolutions[i], scale, xll.min(), xll.max(), xhi.min(), xhi.max()))
             xll = xll / scale
@@ -219,7 +220,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--patch_size', type=int, default=1,
                             help='Patchify image into non-overlapped patches')
-    parser.add_argument('--num_channels_dae', type=int, default=128,
+    parser.add_argument('--num_channels_dae', type=int, nargs='+', default=(128,),
                             help='number of initial channels in denosing model')
     parser.add_argument('--n_mlp', type=int, default=3,
                             help='number of mlp layers for z')

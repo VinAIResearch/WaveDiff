@@ -29,6 +29,7 @@ from DWT_IDWT.DWT_IDWT_layer import DWT_2D, IDWT_2D
 from pytorch_wavelets import DWTForward, DWTInverse
 from diffusion import *
 from utils import *
+from freq_utils import *
 
 def grad_penalty_call(args, D_real, x_t):
     grad_real = torch.autograd.grad(
@@ -41,6 +42,7 @@ def grad_penalty_call(args, D_real, x_t):
     
     grad_penalty = args.r1_gamma / 2 * grad_penalty
     grad_penalty.backward()
+
 
 #%%
 def train(rank, gpu, args):
@@ -71,7 +73,7 @@ def train(rank, gpu, args):
     data_loader = torch.utils.data.DataLoader(dataset,
                                                batch_size=batch_size,
                                                shuffle=False,
-                                               num_workers=4,
+                                               num_workers=args.num_workers,
                                                pin_memory=True,
                                                sampler=train_sampler,
                                                drop_last = True)
@@ -94,7 +96,7 @@ def train(rank, gpu, args):
     else:
         netG = gen_net(args).to(device)
 
-    if args.dataset == 'cifar10' or args.dataset == 'stackmnist':    
+    if args.dataset == 'cifar10' or args.dataset == 'stackmnist' or args.dataset == 'tiny_imagenet_200':    
         if not args.two_disc:
            netD = disc_net[0](nc = 2*args.num_channels, ngf = args.ngf,
                                   t_emb_dim = args.t_emb_dim,
@@ -146,7 +148,7 @@ def train(rank, gpu, args):
 
 
     #ddp
-    netG = nn.parallel.DistributedDataParallel(netG, device_ids=[gpu], find_unused_parameters=False) # 
+    netG = nn.parallel.DistributedDataParallel(netG, device_ids=[gpu], find_unused_parameters=False)
     netD = nn.parallel.DistributedDataParallel(netD, device_ids=[gpu])
     if args.two_disc:
         netD_freq = nn.parallel.DistributedDataParallel(netD_freq, device_ids=[gpu])
@@ -161,7 +163,8 @@ def train(rank, gpu, args):
         dwt = DWTForward(J=1, mode='zero', wave='haar').cuda()
         iwt = DWTInverse(mode='zero', wave='haar').cuda()
 
-    num_levels = args.ori_image_size // args.current_resolution // 2
+    num_levels = int(np.log2(args.ori_image_size // args.current_resolution))
+
 
     exp = args.exp
     parent_dir = "./saved_info/wdd_gan/{}".format(args.dataset)
@@ -372,7 +375,18 @@ def train(rank, gpu, args):
             
             # reconstructior loss
             if args.rec_loss:
-                errG = errG + F.l1_loss(x_0_predict, real_data)
+                # if args.train_mode == "only_ll":
+                #     rec_loss = F.l1_loss(x_0_predict, real_data)
+                # elif args.train_mode == "only_hi": 
+                #     rec_loss = F.l1_loss(magnified_function(x_0_predict), magnified_function(real_data))
+                # else:
+                #     rec_loss = F.l1_loss(x_0_predict[:, :3], real_data[:, :3]) + F.l1_loss(magnified_function(x_0_predict[:, 3:]), magnified_function(real_data[:, 3:]))
+                rec_loss = F.l1_loss(x_0_predict, real_data)
+                # if args.train_mode == "only_hi": 
+                #     rec_loss += F.l1_loss(magnified_function(x_0_predict), magnified_function(real_data))
+                # elif args.train_mode == "both":
+                #     rec_loss += F.l1_loss(magnified_function(x_0_predict[:, 3:]), magnified_function(real_data[:, 3:]))
+                errG = errG + rec_loss
             
             errG.backward()
             optimizerG.step()
@@ -581,6 +595,8 @@ if __name__ == '__main__':
                         help='address for master')
     parser.add_argument('--master_port', type=str, default='6002',
                         help='port for master')
+    parser.add_argument('--num_workers', type=int, default=4,
+                        help='num_workers')
 
 
     args = parser.parse_args()

@@ -36,6 +36,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 
+from einops.layers.torch import Rearrange
 from pytorch_wavelets import DWTForward, DWTInverse
 
 conv1x1 = layers.ddpm_conv1x1
@@ -198,6 +199,7 @@ class Downsample(nn.Module):
 
 
 from pytorch_wavelets import DWTForward, DWTInverse
+from DWT_IDWT.DWT_IDWT_layer import DWT_2D, IDWT_2D
 class WaveletDownsample(nn.Module):
     def __init__(self, in_ch=None, out_ch=None):
         super().__init__()
@@ -206,11 +208,15 @@ class WaveletDownsample(nn.Module):
         self.weight.data = default_init()(self.weight.data.shape)
         self.bias = nn.Parameter(torch.zeros(out_ch))
         
-        self.dwt = DWTForward(J=1, mode='zero', wave='haar')
+        # self.dwt = DWTForward(J=1, mode='zero', wave='haar').cuda()
+        self.dwt = DWT_2D("haar")
 
     def forward(self, x):
-        xLL, xH = self.dwt(x)
-        xLH, xHL, xHH = torch.unbind(xH[0], dim=2)
+        # xLL, xH = self.dwt(x)
+        # xLH, xHL, xHH = torch.unbind(xH[0], dim=2)
+
+        xLL, xLH, xHL, xHH = self.dwt(x)
+
         # x = (xLL + xLH + xHL + xHH) / (2. * 4.)
         x = torch.cat((xLL, xLH, xHL, xHH), dim=1) / 2.
 
@@ -332,6 +338,93 @@ class ResnetBlockBigGANpp_Adagn(nn.Module):
       return x + h
     else:
       return (x + h) / np.sqrt(2.)
+
+
+class WaveletResnetBlockBigGANpp_Adagn(nn.Module):
+  def __init__(self, act, in_ch, out_ch=None, temb_dim=None, zemb_dim=None, up=False, down=False,
+               dropout=0.1, skip_rescale=True, init_scale=0., hi_in_ch=None):
+    super().__init__()
+
+    out_ch = out_ch if out_ch else in_ch
+    self.GroupNorm_0 = AdaptiveGroupNorm(min(in_ch // 4, 32), in_ch, zemb_dim)
+    
+    self.up = up
+    self.down = down
+
+    self.Conv_0 = conv3x3(in_ch, out_ch)
+    if temb_dim is not None:
+      self.Dense_0 = nn.Linear(temb_dim, out_ch)
+      self.Dense_0.weight.data = default_init()(self.Dense_0.weight.shape)
+      nn.init.zeros_(self.Dense_0.bias)
+   
+    self.GroupNorm_1 = AdaptiveGroupNorm(min(out_ch // 4, 32), out_ch, zemb_dim)
+    self.Dropout_0 = nn.Dropout(dropout)
+    self.Conv_1 = conv3x3(out_ch, out_ch, init_scale=init_scale)
+    if in_ch != out_ch or up or down:
+      self.Conv_2 = conv1x1(in_ch, out_ch)
+
+    self.skip_rescale = skip_rescale
+    self.act = act
+    self.in_ch = in_ch
+    self.out_ch = out_ch
+
+    if self.up:
+        # self.convH_0 = nn.Sequential(
+        #         Rearrange("b d c h w -> b (d c) h w"),
+        #         conv3x3(hi_in_ch*3, out_ch*3, groups=3),
+        #         Rearrange("b (d c) h w -> b d c h w", c=3),)
+        self.convH_0 = conv3x3(hi_in_ch*3, out_ch*3, groups=3)
+
+    # self.dwt = DWTForward(J=1, mode='zero', wave='haar').cuda()
+    # self.iwt = DWTInverse(mode='zero', wave='haar').cuda()
+
+    self.dwt = DWT_2D("haar")
+    self.iwt = IDWT_2D("haar")
+
+  def forward(self, x, temb=None, zemb=None, skipH=None):
+    h = self.act(self.GroupNorm_0(x, zemb))
+    h = self.Conv_0(h)
+
+    if self.in_ch != self.out_ch or self.up or self.down:
+      x = self.Conv_2(x)
+
+    hH, xH = None, None
+    if self.up:
+      # skipH[0] = self.convH_0(skipH[0]/2.)*2.
+      # h = self.iwt((2.*h, skipH))
+      # x = self.iwt((2.*x, skipH))
+
+      D = h.size(1)
+      skipH = self.convH_0(torch.cat(skipH, dim=1)/2.)*2.
+      h = self.iwt(2.*h, skipH[:, :D], skipH[:, D:2*D], skipH[:, 2*D:])
+      x = self.iwt(2.*x, skipH[:, :D], skipH[:, D:2*D], skipH[:, 2*D:])
+
+    elif self.down:
+      # h, hH = self.dwt(h)
+      # x, xH = self.dwt(x)
+
+      h, hLH, hHL, hHH = self.dwt(h)
+      x, xLH, xHL, xHH = self.dwt(x)
+      hH, xH = (hLH, hHL, hHH), (xLH, xHL, xHH)
+
+      h, x = h/2., x/2. # shift range of ll
+
+    # Add bias to each feature map conditioned on the time embedding
+    if temb is not None:
+      h += self.Dense_0(self.act(temb))[:, :, None, None]
+    h = self.act(self.GroupNorm_1(h, zemb))
+    h = self.Dropout_0(h)
+    h = self.Conv_1(h)
+
+    if not self.skip_rescale:
+      out = x + h
+    else:
+      out = (x + h) / np.sqrt(2.)
+
+    if not self.down:
+        return out
+    # return out, xH
+    return out, hH # new
   
 
 class ResnetBlockBigGANpp_Adagn_one(nn.Module):

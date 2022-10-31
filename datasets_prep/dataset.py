@@ -1,5 +1,7 @@
+import os
 import torch
 import torchvision.transforms as transforms
+from torchvision import datasets
 from torchvision.datasets import CIFAR10
 from .lsun import LSUN
 from .stackmnist_data import StackedMNIST, _data_transforms_stacked_mnist
@@ -17,6 +19,14 @@ def create_dataset(args):
     elif args.dataset == 'stackmnist':
         train_transform, valid_transform = _data_transforms_stacked_mnist()
         dataset = StackedMNIST(root=args.datadir, train=True, download=False, transform=train_transform)
+
+    elif args.dataset == 'tiny_imagenet_200':
+        train_transform = transforms.Compose([
+                        transforms.Resize(64),
+                        transforms.RandomHorizontalFlip(),
+                        transforms.ToTensor(),
+                        transforms.Normalize((0.5,0.5,0.5), (0.5,0.5,0.5))])
+        dataset = datasets.ImageFolder(os.path.join(args.datadir, 'train'), transform=train_transform)
         
     elif args.dataset == 'lsun':
         
