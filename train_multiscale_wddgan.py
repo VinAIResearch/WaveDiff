@@ -29,6 +29,7 @@ from DWT_IDWT.DWT_IDWT_layer import DWT_2D, IDWT_2D
 from pytorch_wavelets import DWTForward, DWTInverse
 from diffusion import *
 from utils import *
+from freq_utils import *
 
 
 def cond_sample_from_model(coefficients, generator, n_time, x_init, T, opt, cond=None):
@@ -148,7 +149,7 @@ def train(rank, gpu, args):
     netD = nn.parallel.DistributedDataParallel(netD, device_ids=[gpu])
 
     # Wavelet Pooling
-    num_levels = args.ori_image_size // args.current_resolution // 2
+    num_levels = int(np.log2(args.ori_image_size // args.current_resolution))
     if not args.use_pytorch_wavelet:
         dwt = DWT_2D("haar")
         iwt = IDWT_2D("haar")
@@ -192,7 +193,7 @@ def train(rank, gpu, args):
     else:
         global_step, epoch, init_epoch = 0, 0, 0
 
-    scale = 2.0*num_levels
+    scale = 2.0**num_levels
 
     for epoch in range(init_epoch, args.num_epoch+1):
         train_sampler.set_epoch(epoch)
@@ -297,7 +298,13 @@ def train(rank, gpu, args):
             
             # reconstructior loss
             if args.rec_loss:
-                errG = errG + F.l1_loss(x_0_predict, real_data)
+                # errG = errG + F.l1_loss(x_0_predict, real_data)
+                rec_loss = F.l1_loss(x_0_predict, real_data)
+                if args.train_mode == "only_hi": 
+                    rec_loss += F.l1_loss(magnified_function(x_0_predict), magnified_function(real_data))
+                elif args.train_mode == "both":
+                    rec_loss += F.l1_loss(magnified_function(x_0_predict[:, 3:]), magnified_function(real_data[:, 3:]))
+                errG = errG + rec_loss
 
             
             errG.backward()

@@ -255,8 +255,9 @@ def train(rank, gpu, args):
     netG = NCSNpp(args).to(device)
     print(netG)
 
-
-    if args.dataset == 'cifar10' or args.dataset == 'stackmnist':    
+    
+    if args.dataset == 'cifar10' or args.dataset == 'stackmnist' or args.dataset == 'tiny_imagenet_200':    
+        print(args.dataset)
         netD = Discriminator_small(nc = 2*args.num_channels, ngf = args.ngf,
                                 t_emb_dim = args.t_emb_dim,
                                 act=nn.LeakyReLU(0.2), patch_size=args.patch_size,
