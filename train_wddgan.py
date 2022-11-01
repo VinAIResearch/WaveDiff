@@ -254,15 +254,15 @@ def train(rank, gpu, args):
             # real_data = real_data * 2 - 1 # [-1, 1]
             real_data = real_data / 2.0 # [-1, 1]
                 
-            # print("xll:", xll.min(), xll.max())
-            # print("xlh:", xlh.min(), xlh.max())
-            # print("xhl:", xhl.min(), xhl.max())
-            # print("xhh:", xhh.min(), xhh.max())
-            
             assert -1 <= real_data.min() < 0
             assert 0 < real_data.max() <= 1
             if args.magnify_data:
-                real_data = magnified_function(real_data)
+                # real_data = magnified_function(real_data)
+                real_data = magnified_function(real_data, train_mode=args.train_mode)
+                # torchvision.utils.save_image(torch.clamp(real_data[:, :3], -1, 1), os.path.join(exp_path, 'mag_real_data_ll.png'), normalize=True)
+                # torchvision.utils.save_image(torch.clamp(real_data[:, 3:6], -1, 1), os.path.join(exp_path, 'mag_real_data_lh.png'), normalize=True)
+                # torchvision.utils.save_image(torch.clamp(real_data[:, 6:9], -1, 1), os.path.join(exp_path, 'mag_real_data_hl.png'), normalize=True)
+                # torchvision.utils.save_image(torch.clamp(real_data[:, 9:12], -1, 1), os.path.join(exp_path, 'mag_real_data_hh.png'), normalize=True)
             
             #sample t
             t = torch.randint(0, args.num_timesteps, (real_data.size(0),), device=device)
@@ -384,8 +384,11 @@ def train(rank, gpu, args):
                 # else:
                 #     rec_loss = F.l1_loss(x_0_predict[:, :3], real_data[:, :3]) + F.l1_loss(magnified_function(x_0_predict[:, 3:]), magnified_function(real_data[:, 3:]))
                 if args.magnify_data: # convert to original signals
-                    x_0_predict = x_0_predict * torch.abs(x_0_predict)
-                    real_data = real_data * torch.abs(real_data)
+                    # x_0_predict = x_0_predict * torch.abs(x_0_predict)
+                    # real_data = real_data * torch.abs(real_data)
+
+                    x_0_predict = demagnified_function(x_0_predict, train_mode=args.train_mode)
+                    real_data = demagnified_function(real_data, train_mode=args.train_mode)
 
                 rec_loss = F.l1_loss(x_0_predict, real_data)
                 if args.train_mode == "only_hi": 
@@ -418,7 +421,9 @@ def train(rank, gpu, args):
             if epoch % 10 == 0:
                 x_pos_sample = x_pos_sample[:, :3]
                 if args.magnify_data:
-                    x_pos_sample = x_pos_sample * torch.abs(x_pos_sample)
+                    # x_pos_sample = x_pos_sample * torch.abs(x_pos_sample)
+                    x_pos_sample = demagnified_function(x_pos_sample, train_mode=args.train_mode)
+                    
                 torchvision.utils.save_image(x_pos_sample, os.path.join(exp_path, 'xpos_epoch_{}.png'.format(epoch)), normalize=True)
             
             x_t_1 = torch.randn_like(real_data)
@@ -428,7 +433,7 @@ def train(rank, gpu, args):
                 fake_sample = sample_from_model(pos_coeff, netG, args.num_timesteps, x_t_1, T, args)
 
             if args.magnify_data:
-                fake_sample = fake_sample * torch.abs(fake_sample)
+                fake_sample = demagnified_function(fake_sample, train_mode=args.train_mode)
 
             if args.train_mode == "only_hi":
                 fake_sample *= 2
@@ -449,12 +454,16 @@ def train(rank, gpu, args):
                 else:
                     fake_sample = iwt((fake_sample[:, :3], [torch.stack((fake_sample[:, 3:6], fake_sample[:, 6:9], fake_sample[:, 9:12]), dim=2)]))
                     real_data = iwt((real_data[:, :3], [torch.stack((real_data[:, 3:6], real_data[:, 6:9], real_data[:, 9:12]), dim=2)]))
+            
 
             fake_sample = (torch.clamp(fake_sample, -1, 1) + 1)/2 # 0-1
             real_data = (torch.clamp(real_data, -1, 1) + 1)/2 # 0-1
 
             torchvision.utils.save_image(fake_sample, os.path.join(exp_path, 'sample_discrete_epoch_{}.png'.format(epoch)))
             torchvision.utils.save_image(real_data, os.path.join(exp_path, 'real_data.png'))
+
+
+
             
             if args.save_content:
                 if epoch % args.save_content_every == 0:
