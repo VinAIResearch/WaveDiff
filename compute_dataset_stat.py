@@ -6,7 +6,7 @@ from tqdm import tqdm
 import torch
 import torchvision
 from datasets_prep.dataset import create_dataset
-from pytorch_fid.fid_score import calculate_activation_statistics_from_dataset, compute_statistics_of_path
+from pytorch_fid.fid_score import compute_statistics_of_path
 from pytorch_fid.inception import InceptionV3
 
 if __name__ == "__main__":

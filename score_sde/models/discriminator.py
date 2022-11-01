@@ -10,6 +10,7 @@ import numpy as np
 from einops import rearrange
 
 from pytorch_wavelets import DWTForward, DWTInverse
+from DWT_IDWT.DWT_IDWT_layer import DWT_2D, IDWT_2D
 
 from . import up_or_down_sampling
 from . import dense_layer
@@ -293,15 +294,13 @@ class WaveletDownConvBlock(nn.Module):
         
         self.downsample = downsample
         
-        # out_channel = out_channel // 4
         self.conv1 = nn.Sequential(
-                    conv2d(in_channel, out_channel, kernel_size, padding=padding),
+                    conv2d(in_channel, out_channel//4, kernel_size, padding=padding),
                     )
 
         
-        self.dense_t1= dense(t_emb_dim, out_channel)
+        self.dense_t1= dense(t_emb_dim, out_channel//4)
 
-        # out_channel = out_channel * 4
         self.conv2 = nn.Sequential(
                     conv2d(out_channel, out_channel, kernel_size, padding=padding,init_scale=0.)
                     )
@@ -309,12 +308,12 @@ class WaveletDownConvBlock(nn.Module):
 
         self.act = act
         
-            
         self.skip = nn.Sequential(
-                    conv2d(in_channel, out_channel, 1, padding=0, bias=False),
+                    conv2d(in_channel, out_channel//4, 1, padding=0, bias=False),
                     )
         
-        self.dwt = DWTForward(J=1, mode='zero', wave='haar')
+        # self.dwt = DWTForward(J=1, mode='zero', wave='haar')
+        self.dwt = DWT_2D("haar")
 
     def forward(self, input, t_emb):
         
@@ -323,20 +322,25 @@ class WaveletDownConvBlock(nn.Module):
         out += self.dense_t1(t_emb)[..., None, None]
        
         out = self.act(out)
+
+        skip = self.skip(input)
        
         if self.downsample:
-            outLL, outH = self.dwt(out)
-            outLH, outHL, outHH = torch.unbind(outH[0], dim=2)
-            out = (outLL + outLH + outHL + outHH) / (2. * 4.)
-            # out = torch.cat((outLL, outLH, outHL, outHH), dim=1) / 2.
+            # outLL, outH = self.dwt(out)
+            # outLH, outHL, outHH = torch.unbind(outH[0], dim=2)
+            outLL, outLH, outHL, outHH = self.dwt(out)
+                
+            # out = (outLL + outLH + outHL + outHH) / (2. * 4.)
+            out = torch.cat((outLL, outLH, outHL, outHH), dim=1) / 2.
             
-            inputLL, inputH = self.dwt(input)
-            inputLH, inputHL, inputHH = torch.unbind(inputH[0], dim=2)
-            input = (inputLL + inputLH + inputHL + inputHH) / (2. * 4.)
-            # input = torch.cat((inputLL, inputLH, inputHL, inputHH), dim=1) / 2.
+            # inputLL, inputH = self.dwt(input)
+            # inputLH, inputHL, inputHH = torch.unbind(inputH[0], dim=2)
+            skipLL, skipLH, skipHL, skipHH = self.dwt(skip)
+
+            # input = (inputLL + inputLH + inputHL + inputHH) / (2. * 4.)
+            skip = torch.cat((skipLL, skipLH, skipHL, skipHH), dim=1) / 2.
+
         out = self.conv2(out)
-        
-        skip = self.skip(input)
         out = (out + skip) / np.sqrt(2)
 
 
@@ -383,8 +387,6 @@ class WaveletDiscriminator_small(nn.Module):
         
         self.stddev_group = 4
         self.stddev_feat = 1
-        
-        self.dwt = DWTForward(J=1, mode='zero', wave='haar')
         
     def forward(self, x, t, x_t):
         x = rearrange(x, "n c (h p1) (w p2) -> n (c p1 p2) h w", p1=self.patch_size, p2=self.patch_size)
@@ -459,8 +461,9 @@ class WaveletDiscriminator_large(nn.Module):
         self.conv3 = WaveletDownConvBlock(ngf*8, ngf*8,  t_emb_dim = t_emb_dim, downsample=True,act=act)
         
         
-        self.conv4 = WaveletDownConvBlock(ngf*8, ngf*8, t_emb_dim = t_emb_dim, downsample=True,act=act)
-        self.conv5, self.conv6 = None, None
+        self.conv4, self.conv5, self.conv6 = None, None, None
+        if num_layers >= 4:
+            self.conv4 = WaveletDownConvBlock(ngf*8, ngf*8, t_emb_dim = t_emb_dim, downsample=True,act=act)
         if num_layers >= 5:
             self.conv5 = WaveletDownConvBlock(ngf*8, ngf*8, t_emb_dim = t_emb_dim, downsample=True,act=act)
         if num_layers >= 6:
@@ -489,7 +492,8 @@ class WaveletDiscriminator_large(nn.Module):
         h = self.conv2(h,t_embed)
 
         h = self.conv3(h,t_embed)
-        h = self.conv4(h,t_embed)
+        if self.conv4 is not None:
+            h = self.conv4(h,t_embed)
         if self.conv5 is not None:
             h = self.conv5(h,t_embed)
         if self.conv6 is not None:
