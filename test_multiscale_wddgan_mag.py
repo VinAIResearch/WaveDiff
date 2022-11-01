@@ -33,8 +33,8 @@ def sample_from_cascaded_models(args, iwt, T, pos_coeff, generators, x_t_1_list,
         ll_sample = ll_sample / scale # to [-1,1]
         ll_sample = torch.clamp(ll_sample, -1, 1)
         hi_sample = cond_sample_from_model(pos_coeff[i+1], netG, args.num_timesteps_list[i+1], x_t_1, T[i+1], args, cond=ll_sample)
-        if i == 0:
-            hi_sample = hi_sample * torch.abs(hi_sample)
+        # if i == 0:
+        hi_sample = hi_sample * torch.abs(hi_sample)
     
         # scale to its original range
         ll_sample = ll_sample * scale 
@@ -96,12 +96,8 @@ def sample_and_test(args):
         
 
         gen_args.image_size = current_resolution
-        if i == 0:
-            gen_args.ch_mult = [1, 2, 2, 2, 4]
-        else:
-            gen_args.ch_mult = CH_MULT[current_resolution]
-        if i ==  1:
-            gen_args.num_channels_dae = 128
+        gen_args.ch_mult = CH_MULT[current_resolution]
+        gen_args.num_channels_dae = args.num_channels_dae[i]
         # gen_args.ch_mult = CH_MULT[256]
         print(gen_args.ch_mult, gen_args.image_size, gen_args.num_channels_dae)
 
@@ -221,7 +217,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--patch_size', type=int, default=1,
                             help='Patchify image into non-overlapped patches')
-    parser.add_argument('--num_channels_dae', type=int, default=128,
+    parser.add_argument('--num_channels_dae', type=int, nargs='+', default=(128,),
                             help='number of initial channels in denosing model')
     parser.add_argument('--n_mlp', type=int, default=3,
                             help='number of mlp layers for z')
