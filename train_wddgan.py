@@ -383,18 +383,20 @@ def train(rank, gpu, args):
                 #     rec_loss = F.l1_loss(magnified_function(x_0_predict), magnified_function(real_data))
                 # else:
                 #     rec_loss = F.l1_loss(x_0_predict[:, :3], real_data[:, :3]) + F.l1_loss(magnified_function(x_0_predict[:, 3:]), magnified_function(real_data[:, 3:]))
+                rec_loss = 0.
                 if args.magnify_data: # convert to original signals
                     # x_0_predict = x_0_predict * torch.abs(x_0_predict)
                     # real_data = real_data * torch.abs(real_data)
 
+                    if args.train_mode == "only_hi": 
+                        rec_loss += F.l1_loss(x_0_predict, real_data)
+                    elif args.train_mode == "both":
+                        rec_loss += F.l1_loss(x_0_predict[:, 3:], real_data[:, 3:])
+
                     x_0_predict = demagnified_function(x_0_predict, train_mode=args.train_mode)
                     real_data = demagnified_function(real_data, train_mode=args.train_mode)
 
-                rec_loss = F.l1_loss(x_0_predict, real_data)
-                if args.train_mode == "only_hi": 
-                    rec_loss += F.l1_loss(magnified_function(x_0_predict), magnified_function(real_data))
-                elif args.train_mode == "both":
-                    rec_loss += F.l1_loss(magnified_function(x_0_predict[:, 3:]), magnified_function(real_data[:, 3:]))
+                rec_loss = rec_loss + F.l1_loss(x_0_predict, real_data)
                 errG = errG + rec_loss
             
             errG.backward()
@@ -461,8 +463,6 @@ def train(rank, gpu, args):
 
             torchvision.utils.save_image(fake_sample, os.path.join(exp_path, 'sample_discrete_epoch_{}.png'.format(epoch)))
             torchvision.utils.save_image(real_data, os.path.join(exp_path, 'real_data.png'))
-
-
 
             
             if args.save_content:
