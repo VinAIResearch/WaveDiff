@@ -294,12 +294,11 @@ class WaveletDownConvBlock(nn.Module):
         
         self.downsample = downsample
         
+        out_channel_2 = out_channel//4 if self.downsample == True else out_channel
         self.conv1 = nn.Sequential(
-                    conv2d(in_channel, out_channel//4, kernel_size, padding=padding),
+                    conv2d(in_channel, out_channel_2, kernel_size, padding=padding),
                     )
-
-        
-        self.dense_t1= dense(t_emb_dim, out_channel//4)
+        self.dense_t1= dense(t_emb_dim, out_channel_2)
 
         self.conv2 = nn.Sequential(
                     conv2d(out_channel, out_channel, kernel_size, padding=padding,init_scale=0.)
@@ -309,7 +308,7 @@ class WaveletDownConvBlock(nn.Module):
         self.act = act
         
         self.skip = nn.Sequential(
-                    conv2d(in_channel, out_channel//4, 1, padding=0, bias=False),
+                    conv2d(in_channel, out_channel_2, 1, padding=0, bias=False),
                     )
         
         # self.dwt = DWTForward(J=1, mode='zero', wave='haar')
