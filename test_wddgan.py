@@ -15,9 +15,11 @@ import time
 import torchvision
 from score_sde.models.ncsnpp_generator_adagn import NCSNpp, WaveletNCSNpp
 from pytorch_fid.fid_score import calculate_fid_given_paths
-from diffusion import *
 from DWT_IDWT.DWT_IDWT_layer import DWT_2D, IDWT_2D
 from pytorch_wavelets import DWTForward, DWTInverse
+
+from diffusion import *
+from freq_utils import *
 
 #%%
 def sample_and_test(args):
@@ -96,7 +98,13 @@ def sample_and_test(args):
         with torch.no_grad():
             for rep in range(repetitions):
                 starter.record()
-                _ = sample_from_model(pos_coeff, netG, args.num_timesteps, x_t_1, T, args)
+                fake_sample = sample_from_model(pos_coeff, netG, args.num_timesteps, x_t_1, T, args)
+                if args.magnify_data:
+                    fake_sample = demagnified_function(fake_sample, train_mode=args.infer_mode)
+
+                fake_sample = iwt((fake_sample[:, :3], [torch.stack((fake_sample[:, 3:6], fake_sample[:, 6:9], fake_sample[:, 9:12]), dim=2)]))
+                fake_sample = torch.clamp(fake_sample, -1, 1)
+
                 ender.record()
                 # WAIT FOR GPU SYNC
                 torch.cuda.synchronize()
@@ -113,6 +121,9 @@ def sample_and_test(args):
             with torch.no_grad():
                 x_t_1 = torch.randn(args.batch_size, args.num_channels,args.image_size, args.image_size).to(device)
                 fake_sample = sample_from_model(pos_coeff, netG, args.num_timesteps, x_t_1,T,  args)
+
+                if args.magnify_data:
+                    fake_sample = demagnified_function(fake_sample, train_mode=args.infer_mode)
                 
                 if args.infer_mode == "both":
                     fake_sample *= 2
@@ -137,6 +148,9 @@ def sample_and_test(args):
     else:
         x_t_1 = torch.randn(args.batch_size, args.num_channels,args.image_size, args.image_size).to(device)
         fake_sample = sample_from_model(pos_coeff, netG, args.num_timesteps, x_t_1,T,  args)
+
+        if args.magnify_data:
+            fake_sample = demagnified_function(fake_sample, train_mode=args.infer_mode)
         if args.infer_mode == "both":
             fake_sample *= 2
             if not args.use_pytorch_wavelet:
@@ -230,6 +244,7 @@ if __name__ == '__main__':
     parser.add_argument("--infer_mode", default="only_ll")
     parser.add_argument("--current_resolution", type=int, default=256)
     parser.add_argument("--net_type", default="normal")
+    parser.add_argument("--magnify_data", action="store_true")
 
 
 
