@@ -324,7 +324,6 @@ class WaveletDownConvBlock(nn.Module):
        
         out = self.act(out)
 
-        skip = self.skip(input)
        
         if self.downsample:
             # outLL, outH = self.dwt(out)
@@ -337,13 +336,14 @@ class WaveletDownConvBlock(nn.Module):
             
             # inputLL, inputH = self.dwt(input)
             # inputLH, inputHL, inputHH = torch.unbind(inputH[0], dim=2)
-            skipLL, skipLH, skipHL, skipHH = self.dwt(skip)
+            inputLL, inputLH, inputHL, inputHH = self.dwt(input)
 
             # input = (inputLL + inputLH + inputHL + inputHH) / (2. * 4.)
             # skip = torch.cat((skipLL, skipLH, skipHL, skipHH), dim=1) / 2.
-            skip = skipLL / 2.
+            input = inputLL / 2.
 
         out = self.conv2(out)
+        skip = self.skip(input) # new
         out = (out + skip) / np.sqrt(2)
 
 

@@ -284,7 +284,6 @@ class NCSNpp(nn.Module):
             mapping_layers.append(self.act)
         self.z_transform = nn.Sequential(*mapping_layers)
         
-
     def forward(self, x, time_cond, z): # return_mid=False
         # patchify
         x = rearrange(x, "n c (h p1) (w p2) -> n (p1 p2 c) h w", p1=self.patch_size, p2=self.patch_size)
@@ -695,6 +694,8 @@ class WaveletNCSNpp(NCSNpp):
         self.dwt = DWT_2D("haar")
         self.iwt = IDWT_2D("haar")
 
+        self.no_use_fbn = getattr(self.config, "no_use_fbn", False)
+
     def forward(self, x, time_cond, z): # return_mid=False
         # patchify
         x = rearrange(x, "n c (h p1) (w p2) -> n (p1 p2 c) h w", p1=self.patch_size, p2=self.patch_size)
@@ -786,23 +787,30 @@ class WaveletNCSNpp(NCSNpp):
         # h = modules[m_idx](h/2., temb, zemb)
         # h = self.iwt((h*2., hH))
 
-        h, hlh, hhl, hhh = self.dwt(h)
-        h = modules[m_idx](h/2., temb, zemb)
-        h = self.iwt(h*2., hlh, hhl, hhh)
+        if self.no_use_fbn:
+            h = modules[m_idx](h, temb, zemb)
+        else:
+            h, hlh, hhl, hhh = self.dwt(h)
+            h = modules[m_idx](h/2., temb, zemb)
+            h = self.iwt(h*2., hlh, hhl, hhh)
         m_idx += 1
 
         # attn block        
         h = modules[m_idx](h)
         m_idx += 1
 
-        h = modules[m_idx](h, temb, zemb)
+        # h = modules[m_idx](h, temb, zemb)
+
         # h, hH = self.dwt(h)
         # h = modules[m_idx](h/2., temb, zemb)
         # h = self.iwt((h*2., hH))
 
-        h, hlh, hhl, hhh = self.dwt(h)
-        h = modules[m_idx](h/2., temb, zemb)
-        h = self.iwt(h*2., hlh, hhl, hhh)
+        if self.no_use_fbn:
+            h = modules[m_idx](h, temb, zemb)
+        else:
+            h, hlh, hhl, hhh = self.dwt(h)
+            h = modules[m_idx](h/2., temb, zemb)
+            h = self.iwt(h*2., hlh, hhl, hhh)
         m_idx += 1
 
         mid_out = h

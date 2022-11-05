@@ -102,6 +102,7 @@ def sample_and_test(args):
                 if args.magnify_data:
                     fake_sample = demagnified_function(fake_sample, train_mode=args.infer_mode)
 
+                fake_sample *= 2.
                 fake_sample = iwt((fake_sample[:, :3], [torch.stack((fake_sample[:, 3:6], fake_sample[:, 6:9], fake_sample[:, 9:12]), dim=2)]))
                 fake_sample = torch.clamp(fake_sample, -1, 1)
 
