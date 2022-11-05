@@ -81,7 +81,7 @@ def sample_and_test(args):
         
     iters_needed = 50000 //args.batch_size
     
-    save_dir = "./generated_samples/{}".format(args.dataset)
+    save_dir = "./wddgan_generated_samples/{}".format(args.dataset)
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
@@ -105,7 +105,6 @@ def sample_and_test(args):
                 fake_sample *= 2.
                 fake_sample = iwt((fake_sample[:, :3], [torch.stack((fake_sample[:, 3:6], fake_sample[:, 6:9], fake_sample[:, 9:12]), dim=2)]))
                 fake_sample = torch.clamp(fake_sample, -1, 1)
-
                 ender.record()
                 # WAIT FOR GPU SYNC
                 torch.cuda.synchronize()
@@ -246,6 +245,7 @@ if __name__ == '__main__':
     parser.add_argument("--current_resolution", type=int, default=256)
     parser.add_argument("--net_type", default="normal")
     parser.add_argument("--magnify_data", action="store_true")
+    parser.add_argument("--no_use_fbn", action="store_true")
 
 
 
