@@ -2,7 +2,7 @@ import os
 import torch
 import torchvision.transforms as transforms
 from torchvision import datasets
-from torchvision.datasets import CIFAR10
+from torchvision.datasets import CIFAR10, STL10
 from .lsun import LSUN
 from .stackmnist_data import StackedMNIST, _data_transforms_stacked_mnist
 from .lmdb_datasets import LMDBDataset
@@ -14,8 +14,12 @@ def create_dataset(args):
                         transforms.RandomHorizontalFlip(),
                         transforms.ToTensor(),
                         transforms.Normalize((0.5,0.5,0.5), (0.5,0.5,0.5))]), download=True)
-       
-    
+    elif args.dataset == 'stl10':
+        dataset = STL10(args.datadir, split="unlabeled", transform=transforms.Compose([
+                        transforms.Resize(64),
+                        transforms.RandomHorizontalFlip(),
+                        transforms.ToTensor(),
+                        transforms.Normalize((0.5,0.5,0.5), (0.5,0.5,0.5))]), download=True)
     elif args.dataset == 'stackmnist':
         train_transform, valid_transform = _data_transforms_stacked_mnist()
         dataset = StackedMNIST(root=args.datadir, train=True, download=False, transform=train_transform)
