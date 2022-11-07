@@ -104,7 +104,7 @@ def sample_and_test(args):
 
                 fake_sample *= 2.
                 fake_sample = iwt((fake_sample[:, :3], [torch.stack((fake_sample[:, 3:6], fake_sample[:, 6:9], fake_sample[:, 9:12]), dim=2)]))
-                fake_sample = torch.clamp(fake_sample, -1, 1)
+                # fake_sample = torch.clamp(fake_sample, -1, 1)
                 ender.record()
                 # WAIT FOR GPU SYNC
                 torch.cuda.synchronize()
