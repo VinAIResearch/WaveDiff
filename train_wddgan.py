@@ -96,7 +96,7 @@ def train(rank, gpu, args):
     else:
         netG = gen_net(args).to(device)
 
-    if args.dataset == 'cifar10' or args.dataset == 'stackmnist' or args.dataset == 'tiny_imagenet_200':    
+    if args.dataset in ['cifar10', 'stackmnist', 'tiny_imagenet_200', 'slt10']:    
         if not args.two_disc:
            netD = disc_net[0](nc = 2*args.num_channels, ngf = args.ngf,
                                   t_emb_dim = args.t_emb_dim,
