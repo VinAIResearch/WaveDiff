@@ -790,6 +790,7 @@ class WaveletNCSNpp(NCSNpp):
         if self.no_use_fbn:
             h = modules[m_idx](h, temb, zemb)
         else:
+            # h = modules[m_idx](h, temb, zemb)
             h, hlh, hhl, hhh = self.dwt(h)
             h = modules[m_idx](h/2., temb, zemb)
             h = self.iwt(h*2., hlh, hhl, hhh)
@@ -808,6 +809,7 @@ class WaveletNCSNpp(NCSNpp):
         if self.no_use_fbn:
             h = modules[m_idx](h, temb, zemb)
         else:
+            h = modules[m_idx](h, temb, zemb) # old
             h, hlh, hhl, hhh = self.dwt(h)
             h = modules[m_idx](h/2., temb, zemb)
             h = self.iwt(h*2., hlh, hhl, hhh)
