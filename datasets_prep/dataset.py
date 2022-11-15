@@ -66,6 +66,16 @@ def create_dataset(args):
             ])
         dataset = ImageLMDB(db_path=args.datadir, db_name='celeba_512', transform=train_transform, backend="pil")
 
+    elif args.dataset == 'celeba_1024':
+        from torchtoolbox.data import ImageLMDB
+        train_transform = transforms.Compose([
+                transforms.Resize(args.image_size),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize((0.5,0.5,0.5), (0.5,0.5,0.5))
+            ])
+        dataset = ImageLMDB(db_path=args.datadir, db_name='celeba_1024', transform=train_transform, backend="pil")
+
     elif args.dataset == 'ffhq_256':
         train_transform = transforms.Compose([
                 transforms.Resize(args.image_size),
