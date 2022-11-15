@@ -29,6 +29,7 @@ from DWT_IDWT.DWT_IDWT_layer import DWT_2D, IDWT_2D
 from pytorch_wavelets import DWTForward, DWTInverse
 from diffusion import *
 from utils import *
+from freq_utils import *
 
 
 def cond_sample_from_model(coefficients, generator, n_time, x_init, T, opt, cond=None):
@@ -62,8 +63,8 @@ def grad_penalty_call(args, D_real, x_t):
 
 #%%
 def train(rank, gpu, args):
-    from score_sde.models.discriminator import Discriminator_small, Discriminator_large
-    from score_sde.models.ncsnpp_generator_adagn import NCSNpp
+    from score_sde.models.discriminator import Discriminator_small, Discriminator_large, WaveletDiscriminator_small, WaveletDiscriminator_large
+    from score_sde.models.ncsnpp_generator_adagn import NCSNpp, WaveletNCSNpp
     from EMA import EMA
 
     torch.manual_seed(args.seed + rank)
@@ -97,15 +98,22 @@ def train(rank, gpu, args):
     args.image_size = args.current_resolution
     CH_MULT = {
         32: [1, 2, 2, 2],
-        64: [1, 2, 2, 2, 4],
-        128: [1, 1, 2, 2, 4, 4],
+        64: [1, 2, 2, 2], # [1, 2, 2, 2, 4],
+        128: [1, 2, 2, 2, 4], # [1, 1, 2, 2, 4, 4],
         256: [1, 1, 2, 2, 4, 4],
     }
     # TODO: changing arch for each resolution
     # args.ch_mult = CH_MULT[args.ori_image_size] 
     args.ch_mult = CH_MULT[args.image_size] 
 
-    netG = NCSNpp(args).to(device)
+    G_NET_ZOO = {"normal": NCSNpp, "wavelet": WaveletNCSNpp}
+    D_NET_ZOO = {"normal": [Discriminator_small, Discriminator_large], 
+        "wavelet": [WaveletDiscriminator_small, WaveletDiscriminator_large]}
+    gen_net = G_NET_ZOO[args.net_type]
+    disc_net = D_NET_ZOO[args.net_type]
+    print("GEN: {}, DISC: {}".format(gen_net, disc_net))
+
+    netG = gen_net(args).to(device)
 
     if args.train_mode == "only_hi":
         num_in_channels = 9
@@ -113,13 +121,13 @@ def train(rank, gpu, args):
         num_in_channels = 3
 
     if args.dataset == 'cifar10' or args.dataset == 'stackmnist':    
-        netD = Discriminator_small(nc = 2*num_in_channels, ngf = args.ngf,
+        netD = disc_net[0](nc = 2*num_in_channels, ngf = args.ngf,
                               t_emb_dim = args.t_emb_dim,
                               act=nn.LeakyReLU(0.2)).to(device)
     else:
-        netD = Discriminator_large(nc = 2*num_in_channels, ngf = args.ngf, 
+        netD = disc_net[1](nc = 2*num_in_channels, ngf = args.ngf, 
                                   t_emb_dim = args.t_emb_dim,
-                                  act=nn.LeakyReLU(0.2)).to(device)
+                                  act=nn.LeakyReLU(0.2), num_layers=args.num_disc_layers).to(device)
 
 
     broadcast_params(netG.parameters())
@@ -141,7 +149,7 @@ def train(rank, gpu, args):
     netD = nn.parallel.DistributedDataParallel(netD, device_ids=[gpu])
 
     # Wavelet Pooling
-    num_levels = args.ori_image_size // args.current_resolution // 2
+    num_levels = int(np.log2(args.ori_image_size // args.current_resolution))
     if not args.use_pytorch_wavelet:
         dwt = DWT_2D("haar")
         iwt = IDWT_2D("haar")
@@ -185,7 +193,7 @@ def train(rank, gpu, args):
     else:
         global_step, epoch, init_epoch = 0, 0, 0
 
-    scale = 2.0*num_levels
+    scale = 2.0**num_levels
 
     for epoch in range(init_epoch, args.num_epoch+1):
         train_sampler.set_epoch(epoch)
@@ -290,7 +298,13 @@ def train(rank, gpu, args):
             
             # reconstructior loss
             if args.rec_loss:
-                errG = errG + F.l1_loss(x_0_predict, real_data)
+                # errG = errG + F.l1_loss(x_0_predict, real_data)
+                rec_loss = F.l1_loss(x_0_predict, real_data)
+                if args.train_mode == "only_hi": 
+                    rec_loss += F.l1_loss(magnified_function(x_0_predict), magnified_function(real_data))
+                elif args.train_mode == "both":
+                    rec_loss += F.l1_loss(magnified_function(x_0_predict[:, 3:]), magnified_function(real_data[:, 3:]))
+                errG = errG + rec_loss
 
             
             errG.backward()
@@ -316,12 +330,24 @@ def train(rank, gpu, args):
                 fake_sample = sample_from_model(pos_coeff, netG, args.num_timesteps, x_t_1, T, args)
             elif args.train_mode == "only_hi":
                 fake_sample = cond_sample_from_model(pos_coeff, netG, args.num_timesteps, x_t_1, T, args, cond=xll)
+                # save fake
+                torchvision.utils.save_image(fake_sample[:, :3], os.path.join(exp_path, 'sample_discrete_lh_epoch_{}.png'.format(epoch)), normalize=True)
+                torchvision.utils.save_image(fake_sample[:, 3:6], os.path.join(exp_path, 'sample_discrete_hl_epoch_{}.png'.format(epoch)), normalize=True)
+                torchvision.utils.save_image(fake_sample[:, 6:9], os.path.join(exp_path, 'sample_discrete_hh_epoch_{}.png'.format(epoch)), normalize=True)
+
+                # save real
+                torchvision.utils.save_image(real_data[:, :3], os.path.join(exp_path, 'real_lh_data.png'), normalize=True)
+                torchvision.utils.save_image(real_data[:, 3:6], os.path.join(exp_path, 'real_hl_data.png'), normalize=True)
+                torchvision.utils.save_image(real_data[:, 6:9], os.path.join(exp_path, 'real_hh_data.png'), normalize=True)
+            
                 if not args.use_pytorch_wavelet:
                     fake_sample = iwt(scale*xll, scale*fake_sample[:, :3], scale*fake_sample[:, 3:6], scale*fake_sample[:, 6:9])
                     real_data = iwt(scale*xll, scale*real_data[:, :3], scale*real_data[:, 3:6], scale*real_data[:, 6:9])
                 else:
                     fake_sample = iwt((scale*xll, [scale*torch.stack((fake_sample[:, :3], fake_sample[:, 3:6], fake_sample[:, 6:9]), dim=2)]))
                     real_data = iwt((scale*xll, [scale*torch.stack((real_data[:, :3], real_data[:, 3:6], real_data[:, 6:9]), dim=2)]))
+                    # 64 -> 128: -2, 2, 128->256: -1, 1
+
             
             elif args.train_mode == "both":
                 fake_sample = sample_from_model(pos_coeff, netG, args.num_timesteps, x_t_1, T, args)
@@ -334,6 +360,8 @@ def train(rank, gpu, args):
                     fake_sample = iwt((fake_sample[:, :3], [torch.stack((fake_sample[:, 3:6], fake_sample[:, 6:9], fake_sample[:, 9:12]), dim=2)]))
                     real_data = iwt((real_data[:, :3], [torch.stack((real_data[:, 3:6], real_data[:, 6:9], real_data[:, 9:12]), dim=2)]))
 
+            fake_sample = fake_sample * (2 / scale)
+            real_data = real_data * (2 / scale)
             fake_sample = (torch.clamp(fake_sample, -1, 1) + 1)/2 # 0-1
             real_data = (torch.clamp(real_data, -1, 1) + 1)/2 # 0-1
 
@@ -388,7 +416,7 @@ if __name__ == '__main__':
                             help='channel multiplier')
     parser.add_argument('--num_res_blocks', type=int, default=2,
                             help='number of resnet blocks per scale')
-    parser.add_argument('--attn_resolutions', default=(16,),
+    parser.add_argument('--attn_resolutions', default=(16,), type=int, nargs='+',
                             help='resolution of applying attention')
     parser.add_argument('--dropout', type=float, default=0.,
                             help='drop-out rate')
@@ -451,6 +479,8 @@ if __name__ == '__main__':
     parser.add_argument("--train_mode", default="only_ll")
     parser.add_argument("--use_pytorch_wavelet", action="store_true")
     parser.add_argument("--rec_loss", action="store_true")
+    parser.add_argument("--net_type", default="normal")
+    parser.add_argument("--num_disc_layers", default=6, type=int)
 
 
     parser.add_argument('--save_content', action='store_true',default=False)

@@ -29,6 +29,7 @@ from DWT_IDWT.DWT_IDWT_layer import DWT_2D, IDWT_2D
 from pytorch_wavelets import DWTForward, DWTInverse
 from diffusion import *
 from utils import *
+from freq_utils import *
 
 def grad_penalty_call(args, D_real, x_t):
     grad_real = torch.autograd.grad(
@@ -42,10 +43,11 @@ def grad_penalty_call(args, D_real, x_t):
     grad_penalty = args.r1_gamma / 2 * grad_penalty
     grad_penalty.backward()
 
+
 #%%
 def train(rank, gpu, args):
-    from score_sde.models.discriminator import Discriminator_small, Discriminator_large
-    from score_sde.models.ncsnpp_generator_adagn import NCSNpp
+    from score_sde.models.discriminator import Discriminator_small, Discriminator_large, WaveletDiscriminator_small, WaveletDiscriminator_large
+    from score_sde.models.ncsnpp_generator_adagn import NCSNpp, WaveletNCSNpp
     from EMA import EMA
 
     torch.manual_seed(args.seed + rank)
@@ -54,7 +56,7 @@ def train(rank, gpu, args):
     device = torch.device('cuda:{}'.format(gpu))
 
     batch_size = args.batch_size
-    print(args.attn_resolutions)
+    # print(args.attn_resolutions)
 
     nz = args.nz #latent dimension
     if args.train_mode == "only_ll":
@@ -71,54 +73,60 @@ def train(rank, gpu, args):
     data_loader = torch.utils.data.DataLoader(dataset,
                                                batch_size=batch_size,
                                                shuffle=False,
-                                               num_workers=4,
+                                               num_workers=args.num_workers,
                                                pin_memory=True,
                                                sampler=train_sampler,
                                                drop_last = True)
     args.ori_image_size = args.image_size
     args.image_size = args.current_resolution
+    G_NET_ZOO = {"normal": NCSNpp, "wavelet": WaveletNCSNpp}
+    D_NET_ZOO = {"normal": [Discriminator_small, Discriminator_large], 
+        "wavelet": [WaveletDiscriminator_small, WaveletDiscriminator_large]}
+    gen_net = G_NET_ZOO[args.net_type]
+    disc_net = D_NET_ZOO[args.disc_net_type]
+    print("GEN: {}, DISC: {}".format(gen_net, disc_net))
     if args.two_gens:
         gen_args1 = copy.deepcopy(args)
         gen_args2 = copy.deepcopy(args)
         gen_args1.num_channels = 3
         gen_args2.num_channels = 12
         gen_args2.num_out_channels = 9
-        netG = NCSNpp(gen_args1).to(device)
-        netG_freq = NCSNpp(gen_args2).to(device)
+        netG = gen_net(gen_args1).to(device)
+        netG_freq = gen_net(gen_args2).to(device)
     else:
-        netG = NCSNpp(args).to(device)
+        netG = gen_net(args).to(device)
 
-    if args.dataset == 'cifar10' or args.dataset == 'stackmnist':    
+    if args.dataset in ['cifar10', 'stackmnist', 'tiny_imagenet_200', 'slt10']:    
         if not args.two_disc:
-           netD = Discriminator_small(nc = 2*args.num_channels, ngf = args.ngf,
+           netD = disc_net[0](nc = 2*args.num_channels, ngf = args.ngf,
                                   t_emb_dim = args.t_emb_dim,
-                                  act=nn.LeakyReLU(0.2)).to(device)
+                                  act=nn.LeakyReLU(0.2), num_layers=args.num_disc_layers).to(device)
         else:
-           netD = Discriminator_small(nc = 2*3, ngf = args.ngf,
+           netD = disc_net[0](nc = 2*3, ngf = args.ngf,
                                    t_emb_dim = args.t_emb_dim,
-                                   act=nn.LeakyReLU(0.2)).to(device)
-           netD_freq = Discriminator_small(nc = 2*9, ngf = args.ngf,
+                                   act=nn.LeakyReLU(0.2), num_layers=args.num_disc_layers).to(device)
+           netD_freq = disc_net[0](nc = 2*9, ngf = args.ngf,
                                   t_emb_dim = args.t_emb_dim,
-                                  act=nn.LeakyReLU(0.2)).to(device)
+                                  act=nn.LeakyReLU(0.2), num_layers=args.num_disc_layers).to(device)
     else:
         if not args.two_disc:
-            netD = Discriminator_large(nc = 2*args.num_channels, ngf = args.ngf, 
+            netD = disc_net[1](nc = 2*args.num_channels, ngf = args.ngf, 
                                       t_emb_dim = args.t_emb_dim,
-                                      act=nn.LeakyReLU(0.2)).to(device)
+                                      act=nn.LeakyReLU(0.2), num_layers=args.num_disc_layers).to(device)
         else:
-            netD = Discriminator_large(nc = 2*3, ngf = args.ngf, 
+            netD = disc_net[1](nc = 2*3, ngf = args.ngf, 
                                        t_emb_dim = args.t_emb_dim,
-                                       act=nn.LeakyReLU(0.2)).to(device)
-            netD_freq = Discriminator_large(nc = 2*9, ngf = args.ngf, 
+                                       act=nn.LeakyReLU(0.2), num_layers=args.num_disc_layers).to(device)
+            netD_freq = disc_net[1](nc = 2*9, ngf = args.ngf, 
                                       t_emb_dim = args.t_emb_dim,
-                                      act=nn.LeakyReLU(0.2)).to(device)
+                                      act=nn.LeakyReLU(0.2), num_layers=args.num_disc_layers).to(device)
 
 
     broadcast_params(netG.parameters())
     broadcast_params(netD.parameters())
 
-    optimizerD = optim.Adam(netD.parameters(), lr=args.lr_d, betas = (args.beta1, args.beta2))
-    optimizerG = optim.Adam(netG.parameters(), lr=args.lr_g, betas = (args.beta1, args.beta2))
+    optimizerD = optim.Adam(filter(lambda p: p.requires_grad, netD.parameters()), lr=args.lr_d, betas = (args.beta1, args.beta2))
+    optimizerG = optim.Adam(filter(lambda p: p.requires_grad, netG.parameters()), lr=args.lr_g, betas = (args.beta1, args.beta2))
 
 
     if args.use_ema:
@@ -140,7 +148,7 @@ def train(rank, gpu, args):
 
 
     #ddp
-    netG = nn.parallel.DistributedDataParallel(netG, device_ids=[gpu])
+    netG = nn.parallel.DistributedDataParallel(netG, device_ids=[gpu], find_unused_parameters=False)
     netD = nn.parallel.DistributedDataParallel(netD, device_ids=[gpu])
     if args.two_disc:
         netD_freq = nn.parallel.DistributedDataParallel(netD_freq, device_ids=[gpu])
@@ -155,7 +163,8 @@ def train(rank, gpu, args):
         dwt = DWTForward(J=1, mode='zero', wave='haar').cuda()
         iwt = DWTInverse(mode='zero', wave='haar').cuda()
 
-    num_levels = args.ori_image_size // args.current_resolution // 2
+    num_levels = int(np.log2(args.ori_image_size // args.current_resolution))
+
 
     exp = args.exp
     parent_dir = "./saved_info/wdd_gan/{}".format(args.dataset)
@@ -172,7 +181,7 @@ def train(rank, gpu, args):
     pos_coeff = Posterior_Coefficients(args, device)
     T = get_time_schedule(args, device)
 
-    if args.resume:
+    if args.resume or os.path.exists(os.path.join(exp_path, 'content.pth')):
         checkpoint_file = os.path.join(exp_path, 'content.pth')
         checkpoint = torch.load(checkpoint_file, map_location=device)
         init_epoch = checkpoint['epoch']
@@ -218,6 +227,9 @@ def train(rank, gpu, args):
                 for p in netD_freq.parameters():  
                     p.requires_grad = True  
                 netD_freq.zero_grad()
+
+            for p in netG.parameters():  
+                p.requires_grad = False  
             
             #sample from p(x_0)
             x0 = x.to(device, non_blocking=True)
@@ -241,14 +253,16 @@ def train(rank, gpu, args):
             # real_data = (real_data - real_data.min()) / (real_data.max() - real_data.min()) # [0, 1]
             # real_data = real_data * 2 - 1 # [-1, 1]
             real_data = real_data / 2.0 # [-1, 1]
-
-            print("xll:", xll.min(), xll.max())
-            print("xlh:", xlh.min(), xlh.max())
-            print("xhl:", xhl.min(), xhl.max())
-            print("xhh:", xhh.min(), xhh.max())
-            
+                
             assert -1 <= real_data.min() < 0
             assert 0 < real_data.max() <= 1
+            if args.magnify_data:
+                # real_data = magnified_function(real_data)
+                real_data = magnified_function(real_data, train_mode=args.train_mode)
+                # torchvision.utils.save_image(torch.clamp(real_data[:, :3], -1, 1), os.path.join(exp_path, 'mag_real_data_ll.png'), normalize=True)
+                # torchvision.utils.save_image(torch.clamp(real_data[:, 3:6], -1, 1), os.path.join(exp_path, 'mag_real_data_lh.png'), normalize=True)
+                # torchvision.utils.save_image(torch.clamp(real_data[:, 6:9], -1, 1), os.path.join(exp_path, 'mag_real_data_hl.png'), normalize=True)
+                # torchvision.utils.save_image(torch.clamp(real_data[:, 9:12], -1, 1), os.path.join(exp_path, 'mag_real_data_hh.png'), normalize=True)
             
             #sample t
             t = torch.randint(0, args.num_timesteps, (real_data.size(0),), device=device)
@@ -289,7 +303,6 @@ def train(rank, gpu, args):
                         grad_penalty_call(args, D_real, x_t)
 
             # train with fake
-            
             if args.two_gens:
                 latent_z = torch.randn(batch_size, nz, device=device)
                 latent_z_freq = torch.randn(batch_size, nz, device=device)
@@ -327,6 +340,9 @@ def train(rank, gpu, args):
             if args.two_disc:
                 for p in netD_freq.parameters():
                     p.requires_grad = False
+
+            for p in netG.parameters():  
+                p.requires_grad = True  
             netG.zero_grad()
             if args.two_gens:
                 netG_freq.zero_grad()
@@ -361,7 +377,27 @@ def train(rank, gpu, args):
             
             # reconstructior loss
             if args.rec_loss:
-                errG = errG + F.l1_loss(x_0_predict, real_data)
+                # if args.train_mode == "only_ll":
+                #     rec_loss = F.l1_loss(x_0_predict, real_data)
+                # elif args.train_mode == "only_hi": 
+                #     rec_loss = F.l1_loss(magnified_function(x_0_predict), magnified_function(real_data))
+                # else:
+                #     rec_loss = F.l1_loss(x_0_predict[:, :3], real_data[:, :3]) + F.l1_loss(magnified_function(x_0_predict[:, 3:]), magnified_function(real_data[:, 3:]))
+                rec_loss = 0.
+                if args.magnify_data: # convert to original signals
+                    # x_0_predict = x_0_predict * torch.abs(x_0_predict)
+                    # real_data = real_data * torch.abs(real_data)
+
+                    if args.train_mode == "only_hi": 
+                        rec_loss += F.l1_loss(x_0_predict, real_data)
+                    elif args.train_mode == "both":
+                        rec_loss += F.l1_loss(x_0_predict[:, 3:], real_data[:, 3:])
+
+                    x_0_predict = demagnified_function(x_0_predict, train_mode=args.train_mode)
+                    real_data = demagnified_function(real_data, train_mode=args.train_mode)
+
+                rec_loss = rec_loss + F.l1_loss(x_0_predict, real_data)
+                errG = errG + rec_loss
             
             errG.backward()
             optimizerG.step()
@@ -386,6 +422,10 @@ def train(rank, gpu, args):
         if rank == 0:
             if epoch % 10 == 0:
                 x_pos_sample = x_pos_sample[:, :3]
+                if args.magnify_data:
+                    # x_pos_sample = x_pos_sample * torch.abs(x_pos_sample)
+                    x_pos_sample = demagnified_function(x_pos_sample, train_mode=args.train_mode)
+                    
                 torchvision.utils.save_image(x_pos_sample, os.path.join(exp_path, 'xpos_epoch_{}.png'.format(epoch)), normalize=True)
             
             x_t_1 = torch.randn_like(real_data)
@@ -393,6 +433,10 @@ def train(rank, gpu, args):
                 fake_sample = sample_from_dual_generators(pos_coeff, netG, netG_freq, args.num_timesteps, x_t_1, T, args)
             else:
                 fake_sample = sample_from_model(pos_coeff, netG, args.num_timesteps, x_t_1, T, args)
+
+            if args.magnify_data:
+                fake_sample = demagnified_function(fake_sample, train_mode=args.train_mode)
+
             if args.train_mode == "only_hi":
                 fake_sample *= 2
                 real_data *= 2
@@ -412,12 +456,14 @@ def train(rank, gpu, args):
                 else:
                     fake_sample = iwt((fake_sample[:, :3], [torch.stack((fake_sample[:, 3:6], fake_sample[:, 6:9], fake_sample[:, 9:12]), dim=2)]))
                     real_data = iwt((real_data[:, :3], [torch.stack((real_data[:, 3:6], real_data[:, 6:9], real_data[:, 9:12]), dim=2)]))
+            
 
             fake_sample = (torch.clamp(fake_sample, -1, 1) + 1)/2 # 0-1
             real_data = (torch.clamp(real_data, -1, 1) + 1)/2 # 0-1
 
             torchvision.utils.save_image(fake_sample, os.path.join(exp_path, 'sample_discrete_epoch_{}.png'.format(epoch)))
             torchvision.utils.save_image(real_data, os.path.join(exp_path, 'real_data.png'))
+
             
             if args.save_content:
                 if epoch % args.save_content_every == 0:
@@ -548,7 +594,13 @@ if __name__ == '__main__':
     parser.add_argument("--use_pytorch_wavelet", action="store_true")
     parser.add_argument("--two_gens", action="store_true")
     parser.add_argument("--rec_loss", action="store_true")
-
+    parser.add_argument("--net_type", default="normal")
+    parser.add_argument("--disc_net_type", default="normal")
+    parser.add_argument("--num_disc_layers", default=6, type=int)
+    parser.add_argument("--magnify_data", action="store_true")
+    parser.add_argument("--no_use_fbn", action="store_true")
+    parser.add_argument("--no_use_freq", action="store_true")
+    parser.add_argument("--no_use_residual", action="store_true")
 
     parser.add_argument('--save_content', action='store_true',default=False)
     parser.add_argument('--save_content_every', type=int, default=50, help='save content for resuming every x epochs')
@@ -567,6 +619,8 @@ if __name__ == '__main__':
                         help='address for master')
     parser.add_argument('--master_port', type=str, default='6002',
                         help='port for master')
+    parser.add_argument('--num_workers', type=int, default=4,
+                        help='num_workers')
 
 
     args = parser.parse_args()

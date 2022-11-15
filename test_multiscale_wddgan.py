@@ -22,31 +22,34 @@ from train_multiscale_wddgan import cond_sample_from_model
 
 def sample_from_cascaded_models(args, iwt, T, pos_coeff, generators, x_t_1_list, device):
     # generate ll first
-    ll_sample = sample_from_model(pos_coeff, generators[0], args.num_timesteps, x_t_1_list[0], T, args) * (2*args.num_wavelet_levels)
+    ll_sample = sample_from_model(pos_coeff[0], generators[0], args.num_timesteps_list[0], x_t_1_list[0], T[0], args) * (2**args.num_wavelet_levels)
     # print(ll_sample.min(), ll_sample.max())
     
     # then generate hi coeffs for IWT
-    ll_list = []
+    ll_list, hi_list = [], []
     for i, (netG, x_t_1) in enumerate(zip(generators[1:], x_t_1_list[1:])):
-        ll_list.append(ll_sample)
-        scale = 2.*(args.num_wavelet_levels - i)
-        # ll_sample = ll_sample / scale # to [-1,1]
-        # ll_sample = torch.clamp(ll_sample, -1, 1)
-        hi_sample = cond_sample_from_model(pos_coeff, netG, args.num_timesteps, x_t_1, T, args, cond=ll_sample)
+        scale = 2.**(args.num_wavelet_levels - i)
+        ll_sample = ll_sample / scale # to [-1,1]
+        ll_sample = torch.clamp(ll_sample, -1, 1)
+        hi_sample = cond_sample_from_model(pos_coeff[i+1], netG, args.num_timesteps_list[i+1], x_t_1, T[i+1], args, cond=ll_sample)
     
         # scale to its original range
-        # ll_sample = ll_sample * scale 
+        ll_sample = ll_sample * scale 
         hi_sample = hi_sample * scale
         lh_sample = hi_sample[:, :3]
         hl_sample = hi_sample[:, 3:6]
         hh_sample = hi_sample[:, 6:9]
+
+        ll_list.append(ll_sample)
+        hi_list.append(hi_sample)
+
         # iwt
         ll_sample = iwt((ll_sample, [torch.stack((lh_sample, hl_sample, hh_sample), dim=2)]))
         # print(ll_sample.min(), ll_sample.max(), scale)
     
     # print(ll_sample.min(), ll_sample.max())
     fake_sample = torch.clamp(ll_sample, -1, 1)
-    return fake_sample, ll_list
+    return fake_sample, ll_list, hi_list
 
 #%%
 def sample_and_test(args):
@@ -68,8 +71,8 @@ def sample_and_test(args):
 
     CH_MULT = {
         32: [1, 2, 2, 2],
-        64: [1, 2, 2, 2, 4],
-        128: [1, 1, 2, 2, 4, 4],
+        64: [1, 2, 2, 2], # [1, 2, 2, 2, 4]
+        128: [1, 2, 2, 2, 4], # [1, 1, 2, 2, 4, 4]
         256: [1, 1, 2, 2, 4, 4],
     }
     
@@ -82,9 +85,10 @@ def sample_and_test(args):
         epoch_id = args.epoch_id[i]
         exp_path = args.exp[i]
         gen_args = copy.copy(args)
-        print("Load pretrained generators at {} with {} epochs".format(exp_path, epoch_id))
-        if "ll" in exp_path:
+        print("Load pretrained generators at {} at {} epochs".format(exp_path, epoch_id))
+        if "hi" not in exp_path:
             gen_args.num_channels = 3
+            gen_args.num_out_channels = 3
             # gen_args.num_channels_dae = 128
         else: # hi
             gen_args.num_channels = 12
@@ -93,8 +97,9 @@ def sample_and_test(args):
         
 
         gen_args.image_size = current_resolution
-        # gen_args.ch_mult = CH_MULT[current_resolution]
-        gen_args.ch_mult = CH_MULT[256]
+        gen_args.ch_mult = CH_MULT[current_resolution]
+        gen_args.num_channels_dae = args.num_channels_dae[i]
+        # gen_args.ch_mult = CH_MULT[256]
         print(gen_args.ch_mult, gen_args.image_size)
 
         netG = NCSNpp(gen_args).to(device)
@@ -109,13 +114,21 @@ def sample_and_test(args):
         netG.eval()
 
         generators.append(netG)
-        if "ll" not in exp_path:
+        if "hi" in exp_path:
             current_resolution *= 2
     
     iwt = DWTInverse(mode='zero', wave='haar').cuda()
-    T = get_time_schedule(args, device)
+
+    # T = get_time_schedule(args, device)
+    T = []
+    pos_coeff = []
+    args.num_timesteps_list = args.num_timesteps
+    for nT in args.num_timesteps_list:
+        t_args = copy.deepcopy(args)
+        t_args.num_timesteps = nT
+        T.append(get_time_schedule(t_args, device))
+        pos_coeff.append(Posterior_Coefficients(t_args, device))
     
-    pos_coeff = Posterior_Coefficients(args, device)
         
     iters_needed = 50000 //args.batch_size
     
@@ -152,7 +165,7 @@ def sample_and_test(args):
         for i in range(iters_needed):
             with torch.no_grad():
                 x_t_1_list = [torch.randn(args.batch_size, 3, resolutions[0], resolutions[0]).to(device)] + [torch.randn(args.batch_size, 9, res, res).to(device) for res in resolutions]
-                fake_sample = sample_from_cascaded_models(args, iwt, T, pos_coeff, generators, x_t_1_list, device)
+                fake_sample, _, _ = sample_from_cascaded_models(args, iwt, T, pos_coeff, generators, x_t_1_list, device)
                 fake_sample = to_range_0_1(fake_sample)
                 for j, x in enumerate(fake_sample):
                     index = i * args.batch_size + j 
@@ -166,16 +179,20 @@ def sample_and_test(args):
         print('FID = {}'.format(fid))
     else:
         x_t_1_list = [torch.randn(args.batch_size, 3, resolutions[0], resolutions[0]).to(device)] + [torch.randn(args.batch_size, 9, res, res).to(device) for res in resolutions]
-        fake_sample, ll_list = sample_from_cascaded_models(args, iwt, T, pos_coeff, generators, x_t_1_list, device)
+        fake_sample, ll_list, hi_list = sample_from_cascaded_models(args, iwt, T, pos_coeff, generators, x_t_1_list, device)
         fake_sample = to_range_0_1(fake_sample)
         
-        scale = 2*args.num_wavelet_levels
-        for i, xll in enumerate(ll_list):
+        scale = 2**args.num_wavelet_levels
+        for i, (xll, xhi)  in enumerate(zip(ll_list, hi_list)):
+            print("resolution {} with scale {}: ll range [{}, {}], hi range [{}, {}]".format(resolutions[i], scale, xll.min(), xll.max(), xhi.min(), xhi.max()))
             xll = xll / scale
-            print(scale, xll.shape, xll.min(), xll.max())
             xll = torch.clamp(xll, -1, 1)
+            xhi = xhi / scale
             
-            torchvision.utils.save_image(xll, 'samples_ll{}_{}.jpg'.format(resolutions[i], args.dataset))
+            torchvision.utils.save_image(to_range_0_1(xll), 'samples_ll{}_{}.jpg'.format(resolutions[i], args.dataset))
+            torchvision.utils.save_image(to_range_0_1(xhi[:, :3]), 'samples_lh{}_{}.jpg'.format(resolutions[i], args.dataset))
+            torchvision.utils.save_image(to_range_0_1(xhi[:, 3:6]), 'samples_hl{}_{}.jpg'.format(resolutions[i], args.dataset))
+            torchvision.utils.save_image(to_range_0_1(xhi[:, 6:9]), 'samples_hh{}_{}.jpg'.format(resolutions[i], args.dataset))
             scale = scale / 2.
 
         torchvision.utils.save_image(fake_sample, 'samples_{}.jpg'.format(args.dataset))
@@ -203,7 +220,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--patch_size', type=int, default=1,
                             help='Patchify image into non-overlapped patches')
-    parser.add_argument('--num_channels_dae', type=int, default=128,
+    parser.add_argument('--num_channels_dae', type=int, nargs='+', default=(128,),
                             help='number of initial channels in denosing model')
     parser.add_argument('--n_mlp', type=int, default=3,
                             help='number of mlp layers for z')
@@ -250,8 +267,7 @@ if __name__ == '__main__':
                             help='size of image')
 
     parser.add_argument('--nz', type=int, default=100)
-    parser.add_argument('--num_timesteps', type=int, default=4)
-
+    parser.add_argument('--num_timesteps', type=int, nargs='+', default=[4])
 
     parser.add_argument('--z_emb_dim', type=int, default=256)
     parser.add_argument('--t_emb_dim', type=int, default=256)
