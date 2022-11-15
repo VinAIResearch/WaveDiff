@@ -599,7 +599,8 @@ if __name__ == '__main__':
     parser.add_argument("--num_disc_layers", default=6, type=int)
     parser.add_argument("--magnify_data", action="store_true")
     parser.add_argument("--no_use_fbn", action="store_true")
-
+    parser.add_argument("--no_use_freq", action="store_true")
+    parser.add_argument("--no_use_residual", action="store_true")
 
     parser.add_argument('--save_content', action='store_true',default=False)
     parser.add_argument('--save_content_every', type=int, default=50, help='save content for resuming every x epochs')

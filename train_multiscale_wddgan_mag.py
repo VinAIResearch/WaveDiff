@@ -97,8 +97,8 @@ def train(rank, gpu, args):
     args.image_size = args.current_resolution
     CH_MULT = {
         32: [1, 2, 2, 2],
-        64: [1, 2, 2, 2, 4], # [1, 2, 2, 2], 
-        128: [1, 1, 2, 2, 4, 4], #[1, 2, 2, 2, 4], 
+        64: [1, 2, 2, 2], #  [1, 2, 2, 2, 4], 
+        128: [1, 2, 2, 2, 4], # [1, 1, 2, 2, 4, 4],
         256: [1, 1, 2, 2, 4, 4],
     }
     # TODO: changing arch for each resolution
