@@ -489,6 +489,10 @@ class WaveletNCSNpp(NCSNpp):
         combine_method = config.progressive_combine.lower()
         combiner = functools.partial(Combine, method=combine_method)
 
+        self.no_use_fbn = getattr(self.config, "no_use_fbn", False)
+        self.no_use_freq = getattr(self.config, "no_use_freq", False)
+        self.no_use_residual = getattr(self.config, "no_use_residual", False)
+
         modules = []
         # timestep/noise_level embedding; only for continuous training
         if embedding_type == 'fourier':
@@ -533,9 +537,11 @@ class WaveletNCSNpp(NCSNpp):
         if progressive_input == 'input_skip':
             self.pyramid_downsample = layerspp.Downsample(fir=fir, fir_kernel=fir_kernel, with_conv=False)
         elif progressive_input == 'residual':
-            # pyramid_downsample = functools.partial(layerspp.Downsample,
-            #                                        fir=fir, fir_kernel=fir_kernel, with_conv=True)
-            pyramid_downsample = functools.partial(layerspp.WaveletDownsample)
+            if self.no_use_residual:
+                pyramid_downsample = functools.partial(layerspp.Downsample,
+                                                       fir=fir, fir_kernel=fir_kernel, with_conv=True)
+            else:
+                pyramid_downsample = functools.partial(layerspp.WaveletDownsample)
 
         if resblock_type == 'ddpm':
             ResnetBlock = functools.partial(ResnetBlockDDPM,
@@ -547,22 +553,25 @@ class WaveletNCSNpp(NCSNpp):
                                             zemb_dim = z_emb_dim)
 
         elif resblock_type == 'biggan':
-            # ResnetBlock = functools.partial(ResnetBlockBigGAN,
-            #                                 act=act,
-            #                                 dropout=dropout,
-            #                                 fir=fir,
-            #                                 fir_kernel=fir_kernel,
-            #                                 init_scale=init_scale,
-            #                                 skip_rescale=skip_rescale,
-            #                                 temb_dim=nf * 4,
-            #                                 zemb_dim = z_emb_dim)
-            ResnetBlock = functools.partial(WaveletResnetBlockBigGAN,
-                                            act=act,
-                                            dropout=dropout,
-                                            init_scale=init_scale,
-                                            skip_rescale=skip_rescale,
-                                            temb_dim=nf * 4,
-                                            zemb_dim = z_emb_dim)
+            if self.no_use_freq:
+                ResnetBlock = functools.partial(ResnetBlockBigGAN,
+                                                act=act,
+                                                dropout=dropout,
+                                                fir=fir,
+                                                fir_kernel=fir_kernel,
+                                                init_scale=init_scale,
+                                                skip_rescale=skip_rescale,
+                                                temb_dim=nf * 4,
+                                                zemb_dim = z_emb_dim)
+            else:
+                ResnetBlock = functools.partial(WaveletResnetBlockBigGAN,
+                                                act=act,
+                                                dropout=dropout,
+                                                init_scale=init_scale,
+                                                skip_rescale=skip_rescale,
+                                                temb_dim=nf * 4,
+                                                zemb_dim = z_emb_dim)
+
         elif resblock_type == 'biggan_oneadagn':
             ResnetBlock = functools.partial(ResnetBlockBigGAN_one,
                                             act=act,
@@ -666,8 +675,10 @@ class WaveletNCSNpp(NCSNpp):
                 if resblock_type == 'ddpm':
                     modules.append(Upsample(in_ch=in_ch))
                 else:
-                    # modules.append(ResnetBlock(in_ch=in_ch, up=True))
-                    modules.append(ResnetBlock(in_ch=in_ch, up=True, hi_in_ch=hs_c2.pop()))
+                    if self.no_use_freq:
+                        modules.append(ResnetBlock(in_ch=in_ch, up=True))
+                    else:
+                        modules.append(ResnetBlock(in_ch=in_ch, up=True, hi_in_ch=hs_c2.pop()))
 
         assert not hs_c
 
@@ -694,7 +705,6 @@ class WaveletNCSNpp(NCSNpp):
         self.dwt = DWT_2D("haar")
         self.iwt = IDWT_2D("haar")
 
-        self.no_use_fbn = getattr(self.config, "no_use_fbn", False)
 
     def forward(self, x, time_cond, z): # return_mid=False
         # patchify
@@ -758,9 +768,11 @@ class WaveletNCSNpp(NCSNpp):
                     h = modules[m_idx](h)
                     m_idx += 1
                 else:
-                    # h = modules[m_idx](h, temb, zemb)
-                    h, skipH = modules[m_idx](h, temb, zemb)
-                    skipHs.append(skipH)
+                    if self.no_use_freq:
+                        h = modules[m_idx](h, temb, zemb)
+                    else:
+                        h, skipH = modules[m_idx](h, temb, zemb)
+                        skipHs.append(skipH)
                     m_idx += 1
 
                 if self.progressive_input == 'input_skip':
@@ -813,6 +825,8 @@ class WaveletNCSNpp(NCSNpp):
             h, hlh, hhl, hhh = self.dwt(h)
             h = modules[m_idx](h/2., temb, zemb)
             h = self.iwt(h*2., hlh, hhl, hhh)
+
+        # h = modules[m_idx](h, temb, zemb) # freq & normal
         m_idx += 1
 
         mid_out = h
@@ -872,8 +886,10 @@ class WaveletNCSNpp(NCSNpp):
                     h = modules[m_idx](h)
                     m_idx += 1
                 else:
-                    # h = modules[m_idx](h, temb, zemb)
-                    h = modules[m_idx](h, temb, zemb, skipH=skipHs.pop())
+                    if self.no_use_freq:
+                        h = modules[m_idx](h, temb, zemb)
+                    else:
+                        h = modules[m_idx](h, temb, zemb, skipH=skipHs.pop())
 
                     m_idx += 1
 

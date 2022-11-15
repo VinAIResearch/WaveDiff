@@ -1,5 +1,5 @@
 #!/bin/sh
-#SBATCH --job-name=stl # create a short name for your job
+#SBATCH --job-name=ce_nres # create a short name for your job
 #SBATCH --output=/lustre/scratch/client/vinai/users/haopt12/DiffusionGAN/slurm_%A.out # create a output file
 #SBATCH --error=/lustre/scratch/client/vinai/users/haopt12/DiffusionGAN/slurm_%A.err # create a error file
 #SBATCH --partition=research # choose partition
@@ -17,7 +17,7 @@
 set -x
 set -e
 
-export MASTER_PORT=6138
+export MASTER_PORT=6143
 export WORLD_SIZE=1
                                                                                               
 export SLURM_JOB_NODELIST=$(scontrol show hostnames $SLURM_JOB_NODELIST | tr '\n' ' ')
@@ -47,11 +47,11 @@ export PYTHONPATH=$(pwd):$PYTHONPATH
 #     # --use_local_loss \
 
 
-python train_ddgan.py --dataset stl10 --image_size 64 --exp ddgan_stl10_exp1 --num_channels 3 --num_channels_dae 128 --num_timesteps 4 \
-    --num_res_blocks 2 --batch_size 64 --num_epoch 900 --ngf 64 --nz 100 --z_emb_dim 256 --n_mlp 4 --embedding_type positional \
-    --use_ema --ema_decay 0.9999 --r1_gamma 0.02 --lr_d 1.25e-4 --lr_g 1.6e-4 --lazy_reg 15 \
-    --ch_mult 1 2 2 2 --save_content --datadir ../data/STL-10 --patch_size 1 \
-    --master_port $MASTER_PORT --num_process_per_node 4 \
+# python train_ddgan.py --dataset stl10 --image_size 64 --exp ddgan_stl10_exp1 --num_channels 3 --num_channels_dae 128 --num_timesteps 4 \
+#     --num_res_blocks 2 --batch_size 64 --num_epoch 900 --ngf 64 --nz 100 --z_emb_dim 256 --n_mlp 4 --embedding_type positional \
+#     --use_ema --ema_decay 0.9999 --r1_gamma 0.02 --lr_d 1.25e-4 --lr_g 1.6e-4 --lazy_reg 15 \
+#     --ch_mult 1 2 2 2 --save_content --datadir ../data/STL-10 --patch_size 1 \
+#     --master_port $MASTER_PORT --num_process_per_node 4 \
 
 # python train_ddgan.py --dataset tiny_imagenet_200 --image_size 64 --exp ddgan_tinyimgnet200_exp1_600ep --num_channels 3 --num_channels_dae 128 --num_timesteps 4 \
 #     --num_res_blocks 2 --batch_size 64 --num_epoch 600 --ngf 64 --nz 100 --z_emb_dim 256 --n_mlp 4 --embedding_type positional \
@@ -61,11 +61,11 @@ python train_ddgan.py --dataset stl10 --image_size 64 --exp ddgan_stl10_exp1 --n
 #     --resume \
 #     # --use_local_loss \
 
-# python train_ddgan.py --dataset celeba_256 --image_size 128 --exp ddgan_celebahq_128_exp1 --num_channels 3 --num_channels_dae 64 --ch_mult 1 1 2 2 4 4 --num_timesteps 2 \
-# --num_res_blocks 2 --batch_size 32 --num_epoch 400 --ngf 64 --embedding_type positional --use_ema --r1_gamma 2. \
+# python train_ddgan.py --dataset celeba_256 --image_size 128 --exp ddgan_celebahq_exp1_500ep --num_channels 3 --num_channels_dae 64 --ch_mult 1 1 2 2 4 4 --num_timesteps 2 \
+# --num_res_blocks 2 --batch_size 32 --num_epoch 500 --ngf 64 --embedding_type positional --use_ema --r1_gamma 2. \
 # --z_emb_dim 256 --lr_d 1e-4 --lr_g 2e-4 --lazy_reg 10 --save_content --datadir data/celeba/celeba-lmdb/ \
 # --patch_size 1 \
-# --master_address $MASTER_ADDRESS --master_port $MASTER_PORT --num_process_per_node 1 \
+# --master_address $MASTER_ADDRESS --master_port $MASTER_PORT --num_process_per_node 4 \
 # # --resume
 # # --use_local_loss \
 
@@ -94,29 +94,35 @@ python train_ddgan.py --dataset stl10 --image_size 64 --exp ddgan_stl10_exp1 --n
 # python test_ddgan.py --dataset cifar10 --exp ddgan_p2_cifar10_glo_exp1 --num_channels 3 --num_channels_dae 128 --num_timesteps 4 \
 # 	--num_res_blocks 2 --nz 100 --z_emb_dim 256 --n_mlp 4 --ch_mult 1 2 2 2 --epoch_id 1200 \
 # 	--patch_size 1 \
-#     --batch_size 100 \
+#     --batch_size 1 \
 #     --measure_time \
 #     # --compute_fid --real_img_dir pytorch_fid/cifar10_train_stat.npy 
 
 # python3 test_ddgan.py --dataset celeba_512 --image_size 512 --exp ddgan_celebahq_512_exp1 --num_channels 3 --num_channels_dae 64 \
 # --ch_mult 1 1 2 2 4 4 --num_timesteps 2 --num_res_blocks 2  --epoch_id 325 \
-# --batch_size 25 \
-# --compute_fid --real_img_dir ./pytorch_fid/celebahq_512_stat.npy \
-# # --measure_time \
-# # --two_gens \
+# --batch_size 1 \
+# --measure_time \
+# # --compute_fid --real_img_dir ./pytorch_fid/celebahq_512_stat.npy \
 
  
 # python3 test_ddgan.py --dataset celeba_256 --image_size 256 --exp ddgan_p4_celebahq_exp2_glo --num_channels 3 --num_channels_dae 64 \
 # --ch_mult 1 1 2 2 4 4 --num_timesteps 2 --num_res_blocks 2  --epoch_id 800 \
 # --patch_size 1 \
-# --batch_size 100 \
+# --batch_size 1 \
 # --measure_time \
 # # --compute_fid --real_img_dir /lustre/scratch/client/vinai/users/haopt12/DiffusionGAN/pytorch_fid/celebahq_stat.npy
 
 # python3 test_ddgan.py --dataset lsun --image_size 256 --exp ddgan_lsun_exp1 --num_channels 3 --num_channels_dae 64 \
 #     --ch_mult 1 1 2 2 4 4  --num_timesteps 4 --num_res_blocks 2  --epoch_id 500 \
-#     --measure_time --batch_size 100 \
+#     --measure_time --batch_size 1 \
 
+# python test_ddgan.py --dataset stl10 --exp ddgan_stl10_exp1 --num_channels 3 --num_channels_dae 128 --num_timesteps 4 \
+#     --num_res_blocks 2 --nz 100 --z_emb_dim 256 --n_mlp 4 --ch_mult 1 2 2 2 --epoch_id 900 \
+#     --image_size 64 \
+#     --batch_size 1 \
+#     --measure_time \
+#     # --compute_fid --real_img_dir pytorch_fid/stl10_stat.npy \#
+ 
 # ----------------- Wavelet -----------
 # 1 2 2 2
 # python train_wddgan.py --dataset cifar10 --exp wddgan_cifar10_exp1_noatn_recloss_g122_d3_lazy10_bs256_1800ep --num_channels 3 --num_channels_dae 128 --num_timesteps 4 \
@@ -173,7 +179,7 @@ python train_ddgan.py --dataset stl10 --image_size 64 --exp ddgan_stl10_exp1 --n
 #     # --two_disc \
 
 # 1 1 2 2 4 4
-# python train_wddgan.py --dataset celeba_256 --image_size 256 --exp wddgan_celebahq_exp1_both128_atn16_recloss_new_wg12224_d5_500ep_skiphH --num_channels 12 --num_channels_dae 64 --ch_mult 1 2 2 2 4 --num_timesteps 2 \
+# python train_wddgan.py --dataset celeba_256 --image_size 256 --exp wddgan_celebahq_exp1_both128_atn16_recloss_wg12224_d5_noresidual_500ep/ --num_channels 12 --num_channels_dae 64 --ch_mult 1 2 2 2 4 --num_timesteps 2 \
 # --num_res_blocks 2 --batch_size 32 --num_epoch 500 --ngf 64 --embedding_type positional --use_ema --r1_gamma 2. \
 # --z_emb_dim 256 --lr_d 1e-4 --lr_g 2e-4 --lazy_reg 10 --save_content --datadir data/celeba/celeba-lmdb/ \
 # --current_resolution 128 \
@@ -185,6 +191,8 @@ python train_ddgan.py --dataset stl10 --image_size 64 --exp ddgan_stl10_exp1 --n
 # --net_type wavelet \
 # --save_content_every 10 \
 # --rec_loss \
+# --no_use_residual \
+# # --no_use_freq \
 # # --resume \
 # # --magnify_data \
 # # --disc_net_type wavelet \
@@ -242,19 +250,19 @@ python train_ddgan.py --dataset stl10 --image_size 64 --exp ddgan_stl10_exp1 --n
 # # --two_disc \
 
  
-# python test_wddgan.py --dataset cifar10 --exp wddgan_cifar10_exp1_noatn_newwg122_d3_recloss_bs256_1800ep --num_channels 3 --num_channels_dae 128 --num_timesteps 4 \
-#  --num_res_blocks 2 --nz 100 --z_emb_dim 256 --n_mlp 4 --ch_mult 1 2 2 --epoch_id 1600 \
+# python test_wddgan.py --dataset cifar10 --exp wddgan_cifar10_exp3_noatn_122 --num_channels 3 --num_channels_dae 128 --num_timesteps 4 \
+#  --num_res_blocks 2 --nz 100 --z_emb_dim 256 --n_mlp 4 --ch_mult 1 2 2 --epoch_id 1300 \
 #  --use_pytorch_wavelet \
 #  --infer_mode both \
 #  --image_size 32 \
 #  --current_resolution 16 \
 #  --attn_resolutions 32 \
-#  --net_type wavelet \
-#  --compute_fid --real_img_dir pytorch_fid/cifar10_train_stat.npy \
+#  --batch_size 1 \
+#  --measure_time \
+#  # --compute_fid --real_img_dir pytorch_fid/cifar10_train_stat.npy \
+#  # --net_type wavelet \
 #  # --no_use_fbn \
 #  # --magnify_data \
-#  # --batch_size 100 \
-#  # --measure_time \
 
 
 # python test_wddgan.py --dataset tiny_imagenet_200 --exp wddgan_tinyimgnet200_exp1_16atn_wg1222_d4_recloss_maghloss_skiphH_600ep --num_channels 3 --num_channels_dae 128 --num_timesteps 4 \
@@ -271,16 +279,19 @@ python train_ddgan.py --dataset stl10 --image_size 64 --exp ddgan_stl10_exp1 --n
 #     # --measure_time \
 
 #1 1 2 2 4 4
-# python3 test_wddgan.py --dataset celeba_256 --image_size 256 --exp wddgan_celebahq_exp1_both128_atn16_recloss_wg12224_wd5_500ep_skiphH --num_channels 3 --num_channels_dae 64 \
+# python3 test_wddgan.py --dataset celeba_256 --image_size 256 --exp wddgan_celebahq_exp1_both128_atn16_recloss_wg12224_d5_nofreq_500ep --num_channels 3 --num_channels_dae 64 \
 # --ch_mult 1 2 2 2 4 --num_timesteps 2 --num_res_blocks 2  --epoch_id 500 \
 # --patch_size 1 --infer_mode both \
 # --use_pytorch_wavelet \
 # --current_resolution 128 \
 # --attn_resolutions 16 \
 # --net_type wavelet \
-# --batch_size 100 \
+# --batch_size 1 \
 # --measure_time \
+# # --no_use_fbn \
+# # --no_use_freq \
 # # --compute_fid --real_img_dir /lustre/scratch/client/vinai/users/haopt12/DiffusionGAN/pytorch_fid/celebahq_stat.npy \
+# # --no_use_residual \
 # # --two_gens \
 
 
@@ -291,21 +302,21 @@ python train_ddgan.py --dataset stl10 --image_size 64 --exp ddgan_stl10_exp1 --n
 # --current_resolution 256 \
 # --attn_resolutions 16 \
 # --net_type wavelet \
-# --batch_size 25 \
+# --batch_size 1 \
 # --measure_time \
-# --compute_fid --real_img_dir ./pytorch_fid/celebahq_512_stat.npy \
+# # --compute_fid --real_img_dir ./pytorch_fid/celebahq_512_stat.npy \
 # # --two_gens \
 
 
-# python3 test_wddgan.py --dataset lsun --image_size 256 --exp wddgan_lsun_exp1_wg12224_d5_400ep --num_channels 3 --num_channels_dae 64 \
-# --ch_mult 1 2 2 2 4  --num_timesteps 4 --num_res_blocks 2  --epoch_id 400 \
-# --infer_mode both \
-# --use_pytorch_wavelet \
-# --current_resolution 128 \
-# --net_type wavelet \
-# --measure_time \
-# --batch_size 100 \
-# # --compute_fid --compute_fid --real_img_dir pytorch_fid/lsun_church_stat.npy
+python3 test_wddgan.py --dataset lsun --image_size 256 --exp wddgan_lsun_exp1_wg12224_d5_400ep --num_channels 3 --num_channels_dae 64 \
+--ch_mult 1 2 2 2 4  --num_timesteps 4 --num_res_blocks 2  --epoch_id 400 \
+--infer_mode both \
+--use_pytorch_wavelet \
+--current_resolution 128 \
+--net_type wavelet \
+--measure_time \
+--batch_size 1 \
+# --compute_fid --compute_fid --real_img_dir pytorch_fid/lsun_church_stat.npy
 
 
 # python3 test_wddgan.py --dataset ffhq_256 --image_size 256 --exp wddgan_ffhq_exp1_both128_400ep --num_channels 3 --num_channels_dae 64 \
@@ -319,6 +330,18 @@ python train_ddgan.py --dataset stl10 --image_size 64 --exp ddgan_stl10_exp1 --n
 # # --batch_size 100 \
 # # --measure_time \
 # # --two_gens \
+
+# python test_wddgan.py --dataset stl10 --exp wddgan_stl10_exp1_atn16_old_wg1222_d4_recloss_900ep --num_channels 3 --num_channels_dae 128 --num_timesteps 4 \
+#     --num_res_blocks 2 --nz 100 --z_emb_dim 256 --n_mlp 4 --ch_mult 1 2 2 2 --epoch_id 600 \
+#     --use_pytorch_wavelet \
+#     --infer_mode both \
+#     --image_size 64 \
+#     --current_resolution 32 \
+#     --attn_resolutions 16 \
+#     --net_type wavelet \
+#     --compute_fid --real_img_dir pytorch_fid/stl10_stat.npy \
+#     --measure_time \
+#     --batch_size 1 \
 
 
 

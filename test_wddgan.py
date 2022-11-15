@@ -246,6 +246,8 @@ if __name__ == '__main__':
     parser.add_argument("--net_type", default="normal")
     parser.add_argument("--magnify_data", action="store_true")
     parser.add_argument("--no_use_fbn", action="store_true")
+    parser.add_argument("--no_use_freq", action="store_true")
+    parser.add_argument("--no_use_residual", action="store_true")
 
 
 
