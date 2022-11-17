@@ -208,16 +208,11 @@ class WaveletDownsample(nn.Module):
         self.weight.data = default_init()(self.weight.data.shape)
         self.bias = nn.Parameter(torch.zeros(out_ch))
         
-        # self.dwt = DWTForward(J=1, mode='zero', wave='haar').cuda()
         self.dwt = DWT_2D("haar")
 
     def forward(self, x):
-        # xLL, xH = self.dwt(x)
-        # xLH, xHL, xHH = torch.unbind(xH[0], dim=2)
-
         xLL, xLH, xHL, xHH = self.dwt(x)
 
-        # x = (xLL + xLH + xHL + xHH) / (2. * 4.)
         x = torch.cat((xLL, xLH, xHL, xHH), dim=1) / 2.
 
         x = F.conv2d(x, self.weight, stride=1, padding=1)
@@ -369,14 +364,7 @@ class WaveletResnetBlockBigGANpp_Adagn(nn.Module):
     self.out_ch = out_ch
 
     if self.up:
-        # self.convH_0 = nn.Sequential(
-        #         Rearrange("b d c h w -> b (d c) h w"),
-        #         conv3x3(hi_in_ch*3, out_ch*3, groups=3),
-        #         Rearrange("b (d c) h w -> b d c h w", c=3),)
         self.convH_0 = conv3x3(hi_in_ch*3, out_ch*3, groups=3)
-
-    # self.dwt = DWTForward(J=1, mode='zero', wave='haar').cuda()
-    # self.iwt = DWTInverse(mode='zero', wave='haar').cuda()
 
     self.dwt = DWT_2D("haar")
     self.iwt = IDWT_2D("haar")
@@ -390,19 +378,12 @@ class WaveletResnetBlockBigGANpp_Adagn(nn.Module):
 
     hH, xH = None, None
     if self.up:
-      # skipH[0] = self.convH_0(skipH[0]/2.)*2.
-      # h = self.iwt((2.*h, skipH))
-      # x = self.iwt((2.*x, skipH))
-
       D = h.size(1)
       skipH = self.convH_0(torch.cat(skipH, dim=1)/2.)*2.
       h = self.iwt(2.*h, skipH[:, :D], skipH[:, D:2*D], skipH[:, 2*D:])
       x = self.iwt(2.*x, skipH[:, :D], skipH[:, D:2*D], skipH[:, 2*D:])
 
     elif self.down:
-      # h, hH = self.dwt(h)
-      # x, xH = self.dwt(x)
-
       h, hLH, hHL, hHH = self.dwt(h)
       x, xLH, xHL, xHH = self.dwt(x)
       hH, xH = (hLH, hHL, hHH), (xLH, xHL, xHH)
@@ -423,8 +404,7 @@ class WaveletResnetBlockBigGANpp_Adagn(nn.Module):
 
     if not self.down:
         return out
-    # return out, xH
-    return out, hH # new
+    return out, hH
   
 
 class ResnetBlockBigGANpp_Adagn_one(nn.Module):

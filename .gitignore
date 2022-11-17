@@ -53,3 +53,5 @@ slurm*.err
 # archive
 *.zip
 
+# pycache
+__pycache__
