@@ -699,9 +699,6 @@ class WaveletNCSNpp(NCSNpp):
             mapping_layers.append(self.act)
         self.z_transform = nn.Sequential(*mapping_layers)
         
-        # self.dwt = DWTForward(J=1, mode='zero', wave='haar').cuda()
-        # self.iwt = DWTInverse(mode='zero', wave='haar').cuda()
-
         self.dwt = DWT_2D("haar")
         self.iwt = IDWT_2D("haar")
 
@@ -760,10 +757,6 @@ class WaveletNCSNpp(NCSNpp):
                 hs.append(h)
 
             if i_level != self.num_resolutions - 1:
-                # # reconstruction
-                # hL, hH = self.dwt(hs[-1])
-                # h = self.iwt((hL, hH))
-
                 if self.resblock_type == 'ddpm':
                     h = modules[m_idx](h)
                     m_idx += 1
@@ -793,16 +786,10 @@ class WaveletNCSNpp(NCSNpp):
 
 
         h = hs[-1]
-        # h = modules[m_idx](h, temb, zemb)
-
-        # h, hH = self.dwt(h)
-        # h = modules[m_idx](h/2., temb, zemb)
-        # h = self.iwt((h*2., hH))
 
         if self.no_use_fbn:
             h = modules[m_idx](h, temb, zemb)
         else:
-            # h = modules[m_idx](h, temb, zemb)
             h, hlh, hhl, hhh = self.dwt(h)
             h = modules[m_idx](h/2., temb, zemb)
             h = self.iwt(h*2., hlh, hhl, hhh)
@@ -812,21 +799,13 @@ class WaveletNCSNpp(NCSNpp):
         h = modules[m_idx](h)
         m_idx += 1
 
-        # h = modules[m_idx](h, temb, zemb)
-
-        # h, hH = self.dwt(h)
-        # h = modules[m_idx](h/2., temb, zemb)
-        # h = self.iwt((h*2., hH))
-
         if self.no_use_fbn:
             h = modules[m_idx](h, temb, zemb)
         else:
-            h = modules[m_idx](h, temb, zemb) # old
+            h = modules[m_idx](h, temb, zemb) # forward on original feature space
             h, hlh, hhl, hhh = self.dwt(h)
-            h = modules[m_idx](h/2., temb, zemb)
+            h = modules[m_idx](h/2., temb, zemb) # forward on wavelet space
             h = self.iwt(h*2., hlh, hhl, hhh)
-
-        # h = modules[m_idx](h, temb, zemb) # freq & normal
         m_idx += 1
 
         mid_out = h
@@ -845,10 +824,6 @@ class WaveletNCSNpp(NCSNpp):
                 m_idx += 1
 
             if self.progressive != 'none':
-                # # reconstruction
-                # hL, hH = self.dwt(h)
-                # h = self.iwt((hL, hH))
-
                 if i_level == self.num_resolutions - 1:
                     if self.progressive == 'output_skip':
                         pyramid = self.act(modules[m_idx](h))

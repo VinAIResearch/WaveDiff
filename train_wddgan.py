@@ -257,13 +257,8 @@ def train(rank, gpu, args):
             assert -1 <= real_data.min() < 0
             assert 0 < real_data.max() <= 1
             if args.magnify_data:
-                # real_data = magnified_function(real_data)
                 real_data = magnified_function(real_data, train_mode=args.train_mode)
-                # torchvision.utils.save_image(torch.clamp(real_data[:, :3], -1, 1), os.path.join(exp_path, 'mag_real_data_ll.png'), normalize=True)
-                # torchvision.utils.save_image(torch.clamp(real_data[:, 3:6], -1, 1), os.path.join(exp_path, 'mag_real_data_lh.png'), normalize=True)
-                # torchvision.utils.save_image(torch.clamp(real_data[:, 6:9], -1, 1), os.path.join(exp_path, 'mag_real_data_hl.png'), normalize=True)
-                # torchvision.utils.save_image(torch.clamp(real_data[:, 9:12], -1, 1), os.path.join(exp_path, 'mag_real_data_hh.png'), normalize=True)
-            
+
             #sample t
             t = torch.randint(0, args.num_timesteps, (real_data.size(0),), device=device)
             
@@ -377,16 +372,8 @@ def train(rank, gpu, args):
             
             # reconstructior loss
             if args.rec_loss:
-                # if args.train_mode == "only_ll":
-                #     rec_loss = F.l1_loss(x_0_predict, real_data)
-                # elif args.train_mode == "only_hi": 
-                #     rec_loss = F.l1_loss(magnified_function(x_0_predict), magnified_function(real_data))
-                # else:
-                #     rec_loss = F.l1_loss(x_0_predict[:, :3], real_data[:, :3]) + F.l1_loss(magnified_function(x_0_predict[:, 3:]), magnified_function(real_data[:, 3:]))
                 rec_loss = 0.
                 if args.magnify_data: # convert to original signals
-                    # x_0_predict = x_0_predict * torch.abs(x_0_predict)
-                    # real_data = real_data * torch.abs(real_data)
 
                     if args.train_mode == "only_hi": 
                         rec_loss += F.l1_loss(x_0_predict, real_data)
@@ -423,7 +410,6 @@ def train(rank, gpu, args):
             if epoch % 10 == 0:
                 x_pos_sample = x_pos_sample[:, :3]
                 if args.magnify_data:
-                    # x_pos_sample = x_pos_sample * torch.abs(x_pos_sample)
                     x_pos_sample = demagnified_function(x_pos_sample, train_mode=args.train_mode)
                     
                 torchvision.utils.save_image(x_pos_sample, os.path.join(exp_path, 'xpos_epoch_{}.png'.format(epoch)), normalize=True)

@@ -23,7 +23,7 @@ from freq_utils import *
 
 #%%
 def sample_and_test(args):
-    torch.manual_seed(42)
+    torch.manual_seed(args.seed)
     device = 'cuda:0'
     
     if args.dataset == 'cifar10':
@@ -55,17 +55,10 @@ def sample_and_test(args):
 
     netG = gen_net(args).to(device)
     ckpt = torch.load('./saved_info/wdd_gan/{}/{}/netG_{}.pth'.format(args.dataset, args.exp, args.epoch_id), map_location=device)
-    # ckpt = torch.load('./saved_info/multiscale_wdd_gan/{}/{}/netG_{}.pth'.format(args.dataset, args.exp, args.epoch_id), map_location=device)
+    # ckpt = torch.load('../../DiffusionGAN/saved_info/wdd_gan/{}/{}/netG_{}.pth'.format(args.dataset, args.exp, args.epoch_id), map_location=device)
 
     #loading weights from ddp in single gpu
     for key in list(ckpt.keys()):
-        # new_key = key[7:] # drop module.
-        # if "Conv2d_0" in new_key:
-        #     new_key = new_key.replace(".Conv2d_0.", ".conv.")
-        #     print(key)
-        #     print(new_key)
-        # ckpt[new_key] = ckpt.pop(key)
-
         ckpt[key[7:]] = ckpt.pop(key)
         
     netG.load_state_dict(ckpt, strict=False)
@@ -74,7 +67,10 @@ def sample_and_test(args):
     netG.eval()
 
     
-    iwt = DWTInverse(mode='zero', wave='haar').cuda()
+    if not args.use_pytorch_wavelet:
+        iwt = IDWT_2D("haar")
+    else:
+        iwt = DWTInverse(mode='zero', wave='haar').cuda()
     T = get_time_schedule(args, device)
     
     pos_coeff = Posterior_Coefficients(args, device)
@@ -104,7 +100,6 @@ def sample_and_test(args):
 
                 fake_sample *= 2.
                 fake_sample = iwt((fake_sample[:, :3], [torch.stack((fake_sample[:, 3:6], fake_sample[:, 6:9], fake_sample[:, 9:12]), dim=2)]))
-                # fake_sample = torch.clamp(fake_sample, -1, 1)
                 ender.record()
                 # WAIT FOR GPU SYNC
                 torch.cuda.synchronize()
@@ -160,13 +155,13 @@ def sample_and_test(args):
             fake_sample = torch.clamp(fake_sample, -1, 1)
 
         fake_sample = to_range_0_1(fake_sample) # 0-1
-        torchvision.utils.save_image(fake_sample, './samples_{}.jpg'.format(args.dataset))
+        torchvision.utils.save_image(fake_sample, './samples_{}.jpg'.format(args.dataset), nrow=8, padding=0)
         print("Results are saved at samples_{}.jpg".format(args.dataset))
             
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('ddgan parameters')
-    parser.add_argument('--seed', type=int, default=1024,
+    parser.add_argument('--seed', type=int, default=42,
                         help='seed used for initialization')
     parser.add_argument('--compute_fid', action='store_true', default=False,
                             help='whether or not compute FID')
