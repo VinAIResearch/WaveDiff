@@ -124,3 +124,5 @@ if [[ $MODE == train ]]; then
 			--net_type wavelet \
 			--compute_fid --compute_fid --real_img_dir pytorch_fid/lsun_church_stat.npy
 
+	fi
+fi
