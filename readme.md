@@ -60,7 +60,7 @@ To compute fid of pretrained models on a specific epoch, we can add additional a
 We adopt the official Pytorch implementation of [StyleGAN2-ADA](https://github.com/NVlabs/stylegan2-ada-pytorch.git) to compute Recall of generated samples.
 
 ## License ##
-This repository is released under the Apache 2.0 license as found in the LICENSE file.
+This repository is released under the Apache 2.0 license as found in the [LICENSE file](./LICENSE).
 
 ## Bibtex ##
 Cite our paper using the following bibtex item:
