@@ -1,22 +1,4 @@
 #!/bin/sh
-#SBATCH --job-name=gp_ce # create a short name for your job
-#SBATCH --output=/lustre/scratch/client/vinai/users/quandm7/hao_workspace/DiffusionGAN/slurm_%A.out # create a output file
-#SBATCH --error=/lustre/scratch/client/vinai/users/quandm7/hao_workspace/DiffusionGAN/slurm_%A.err # create a error file
-#SBATCH --partition=applied # choose partition
-#SBATCH --gpus-per-node=8
-#SBATCH --cpus-per-task=32 # 80
-#SBATCH --mem-per-gpu=32GB
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --time=10-00:00          # total run time limit (DD-HH:MM)
-#SBATCH --mail-type=begin        # send email when job begins
-#SBATCH --mail-type=end          # send email when job ends
-#SBATCH --mail-type=fail          # send email when job fails
-#SBATCH --mail-user=v.haopt12@vinai.io
-
-set -x
-set -e
-
 export MASTER_PORT=6036
 export WORLD_SIZE=1
                                                                                               
