@@ -32,8 +32,8 @@ def sample_and_test(args):
     elif args.dataset == 'celeba_256':
         real_img_dir = 'pytorch_fid/celebahq_stat.npy'
         # real_img_dir = 'pytorch_fid/celeba_ll_64.npy'
-    # elif args.dataset == 'lsun':
-    #     real_img_dir = 'pytorch_fid/lsun_church_stat.npy'
+    elif args.dataset == 'lsun':
+         real_img_dir = 'pytorch_fid/lsun_church_stat.npy'
     else:
         real_img_dir = args.real_img_dir
 
