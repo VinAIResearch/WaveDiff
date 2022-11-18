@@ -154,7 +154,7 @@ else
 			--current_resolution 128 \
 			--attn_resolutions 16 \
 			--net_type wavelet \
-			# --compute_fid --real_img_dir /lustre/scratch/client/vinai/users/haopt12/DiffusionGAN/pytorch_fid/celebahq_stat.npy \
+			# --compute_fid --real_img_dir ./pytorch_fid/celebahq_stat.npy \
 			# --batch_size 100 \
 			# --measure_time \
 			# --use_pytorch_wavelet \
@@ -167,7 +167,7 @@ else
 			--current_resolution 256 \
 			--attn_resolutions 16 \
 			--net_type wavelet \
-			# --compute_fid --real_img_dir ./pytorch_fid/celebahq_512_stat.npy \
+			# --compute_fid --real_img_dir pytorch_fid/celebahq_512_stat.npy \
 			# --measure_time \
 			# --batch_size 25 \
 

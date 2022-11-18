@@ -88,7 +88,7 @@ else
 		python3 test_ddgan.py --dataset celeba_256 --image_size 256 --exp ddgan_celebahq_exp1 --num_channels 3 --num_channels_dae 64 \
 			--ch_mult 1 1 2 2 4 4 --num_timesteps 2 --num_res_blocks 2  --epoch_id 550 \
 			--patch_size 1 \
-			--compute_fid --real_img_dir /lustre/scratch/client/vinai/users/haopt12/DiffusionGAN/pytorch_fid/celebahq_stat.npy
+			--compute_fid --real_img_dir pytorch_fid/celebahq_stat.npy
 			# --batch_size 100 \
 			# --measure_time \
 
