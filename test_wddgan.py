@@ -160,7 +160,7 @@ def sample_and_test(args):
             fake_sample = torch.clamp(fake_sample, -1, 1)
 
         fake_sample = to_range_0_1(fake_sample) # 0-1
-        torchvision.utils.save_image(fake_sample, './samples_{}.jpg'.format(args.dataset))
+        torchvision.utils.save_image(fake_sample, './samples_{}.jpg'.format(args.dataset), nrow=16, padding=0)
         print("Results are saved at samples_{}.jpg".format(args.dataset))
             
 
