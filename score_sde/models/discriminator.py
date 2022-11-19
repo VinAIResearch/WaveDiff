@@ -294,7 +294,6 @@ class WaveletDownConvBlock(nn.Module):
         
         self.downsample = downsample
         
-        # out_channel_2 = out_channel//4 if self.downsample == True else out_channel
         out_channel_2 = out_channel
 
         self.conv1 = nn.Sequential(
@@ -313,7 +312,6 @@ class WaveletDownConvBlock(nn.Module):
                     conv2d(in_channel, out_channel_2, 1, padding=0, bias=False),
                     )
         
-        # self.dwt = DWTForward(J=1, mode='zero', wave='haar')
         self.dwt = DWT_2D("haar")
 
     def forward(self, input, t_emb):
@@ -326,24 +324,16 @@ class WaveletDownConvBlock(nn.Module):
 
        
         if self.downsample:
-            # outLL, outH = self.dwt(out)
-            # outLH, outHL, outHH = torch.unbind(outH[0], dim=2)
             outLL, outLH, outHL, outHH = self.dwt(out)
                 
-            # out = (outLL + outLH + outHL + outHH) / (2. * 4.)
-            # out = torch.cat((outLL, outLH, outHL, outHH), dim=1) / 2.
             out = outLL / 2.
             
-            # inputLL, inputH = self.dwt(input)
-            # inputLH, inputHL, inputHH = torch.unbind(inputH[0], dim=2)
             inputLL, inputLH, inputHL, inputHH = self.dwt(input)
 
-            # input = (inputLL + inputLH + inputHL + inputHH) / (2. * 4.)
-            # skip = torch.cat((skipLL, skipLH, skipHL, skipHH), dim=1) / 2.
             input = inputLL / 2.
 
         out = self.conv2(out)
-        skip = self.skip(input) # new
+        skip = self.skip(input)
         out = (out + skip) / np.sqrt(2)
 
 
