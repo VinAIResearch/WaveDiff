@@ -104,7 +104,7 @@ Model performance and pretrained checkpoints are provided as below:
 
 Inference time is computed over 300 trials on a single NVIDIA A100 GPU for a batch size of 100, except for the one of high-resolution CelebA-HQ $`(512 \times 512)`$ is computed for a batch of 25 samples.
 
-Downloaded pretrained models should be put at `saved_info/wdd_gan/<DATASET>/` directory where `<DATASET>` is listed in [the section above](#how-to-run). Note: all of attached links are anonymous.
+Downloaded pretrained models should be put at `saved_info/wdd_gan/<DATASET>/` directory where `<DATASET>` is listed in [the section above](#how-to-run). Note: All of the attached links are anonymous.
 
 <!-- ## Bibtex ##
 Cite our paper using the following bibtex item:
