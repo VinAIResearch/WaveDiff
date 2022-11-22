@@ -39,8 +39,11 @@ For `pytorch_wavelets`, please follow [here](https://github.com/fbcotter/pytorch
 
 ## Dataset preparation ##
 We trained on four datasets, including CIFAR10, STL10, LSUN Church Outdoor 256 and CelebA HQ (256 & 512). 
-CIFAR10 and STL10 will be automatically downloaded in the first time execution. 
+
+For CIFAR10 and STL10, they will be automatically downloaded in the first time execution. 
+
 For CelebA HQ (256) and LSUN, please check [here](https://github.com/NVlabs/NVAE#set-up-file-paths-and-data) for dataset preparation.
+
 For CelebA HQ (512), please follow .... 
 
 Once a dataset is downloaded, please put it in `data/` directory as follows:
