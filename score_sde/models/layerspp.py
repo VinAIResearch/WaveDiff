@@ -36,8 +36,8 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 
-from einops.layers.torch import Rearrange
-from pytorch_wavelets import DWTForward, DWTInverse
+from DWT_IDWT.DWT_IDWT_layer import DWT_2D, IDWT_2D
+
 
 conv1x1 = layers.ddpm_conv1x1
 conv3x3 = layers.ddpm_conv3x3
@@ -198,8 +198,6 @@ class Downsample(nn.Module):
     return x
 
 
-from pytorch_wavelets import DWTForward, DWTInverse
-from DWT_IDWT.DWT_IDWT_layer import DWT_2D, IDWT_2D
 class WaveletDownsample(nn.Module):
     def __init__(self, in_ch=None, out_ch=None):
         super().__init__()

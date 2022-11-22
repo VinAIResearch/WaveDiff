@@ -1,22 +1,14 @@
-# ---------------------------------------------------------------
-# Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
-#
-# This work is licensed under the NVIDIA Source Code License
-# for Denoising Diffusion GAN. To view a copy of this license, see the LICENSE file.
-# ---------------------------------------------------------------
 import argparse
 import torch
 import numpy as np
-import copy
 
 import os
-import time
 
 import torchvision
 from score_sde.models.ncsnpp_generator_adagn import NCSNpp, WaveletNCSNpp
 from pytorch_fid.fid_score import calculate_fid_given_paths
-from DWT_IDWT.DWT_IDWT_layer import DWT_2D, IDWT_2D
-from pytorch_wavelets import DWTForward, DWTInverse
+from DWT_IDWT.DWT_IDWT_layer import IDWT_2D
+from pytorch_wavelets import DWTInverse
 
 from diffusion import *
 
@@ -29,20 +21,12 @@ def sample_and_test(args):
         real_img_dir = 'pytorch_fid/cifar10_train_stat.npy'
     elif args.dataset == 'celeba_256':
         real_img_dir = 'pytorch_fid/celebahq_stat.npy'
-        # real_img_dir = 'pytorch_fid/celeba_ll_64.npy'
-    # elif args.dataset == 'lsun':
-    #     real_img_dir = 'pytorch_fid/lsun_church_stat.npy'
+    elif args.dataset == 'lsun':
+        real_img_dir = 'pytorch_fid/lsun_church_stat.npy'
     else:
         real_img_dir = args.real_img_dir
 
     to_range_0_1 = lambda x: (x + 1.) / 2.
-
-    if args.infer_mode == "only_ll":
-        args.num_channels = 3 # low-res or wavelet-coefficients training
-    elif args.infer_mode == "only_hi":
-        args.num_channels = 9 # low-res or wavelet-coefficients training
-    elif args.infer_mode == "both":
-        args.num_channels = 12
 
     args.ori_image_size = args.image_size
     args.image_size = args.current_resolution
@@ -54,15 +38,12 @@ def sample_and_test(args):
 
     netG = gen_net(args).to(device)
     ckpt = torch.load('./saved_info/wdd_gan/{}/{}/netG_{}.pth'.format(args.dataset, args.exp, args.epoch_id), map_location=device)
-    # ckpt = torch.load('../../DiffusionGAN/saved_info/wdd_gan/{}/{}/netG_{}.pth'.format(args.dataset, args.exp, args.epoch_id), map_location=device)
 
     #loading weights from ddp in single gpu
     for key in list(ckpt.keys()):
         ckpt[key[7:]] = ckpt.pop(key)
         
     netG.load_state_dict(ckpt, strict=False)
-    # assert set(msg.missing_keys) == {'head.projection.weight', 'head.projection.bias'}
-
     netG.eval()
 
     
@@ -114,13 +95,12 @@ def sample_and_test(args):
                 x_t_1 = torch.randn(args.batch_size, args.num_channels,args.image_size, args.image_size).to(device)
                 fake_sample = sample_from_model(pos_coeff, netG, args.num_timesteps, x_t_1,T,  args)
 
-                if args.infer_mode == "both":
-                    fake_sample *= 2
-                    if not args.use_pytorch_wavelet:
-                         fake_sample = iwt(fake_sample[:, :3], fake_sample[:, 3:6], fake_sample[:, 6:9], fake_sample[:, 9:12])
-                    else:
-                        fake_sample = iwt((fake_sample[:, :3], [torch.stack((fake_sample[:, 3:6], fake_sample[:, 6:9], fake_sample[:, 9:12]), dim=2)]))
-                    fake_sample = torch.clamp(fake_sample, -1, 1)
+                fake_sample *= 2
+                if not args.use_pytorch_wavelet:
+                    fake_sample = iwt(fake_sample[:, :3], fake_sample[:, 3:6], fake_sample[:, 6:9], fake_sample[:, 9:12])
+                else:
+                    fake_sample = iwt((fake_sample[:, :3], [torch.stack((fake_sample[:, 3:6], fake_sample[:, 6:9], fake_sample[:, 9:12]), dim=2)]))
+                fake_sample = torch.clamp(fake_sample, -1, 1)
 
                 fake_sample = to_range_0_1(fake_sample) # 0-1
                 for j, x in enumerate(fake_sample):
@@ -138,13 +118,12 @@ def sample_and_test(args):
         x_t_1 = torch.randn(args.batch_size, args.num_channels,args.image_size, args.image_size).to(device)
         fake_sample = sample_from_model(pos_coeff, netG, args.num_timesteps, x_t_1,T,  args)
 
-        if args.infer_mode == "both":
-            fake_sample *= 2
-            if not args.use_pytorch_wavelet:
-                 fake_sample = iwt(fake_sample[:, :3], fake_sample[:, 3:6], fake_sample[:, 6:9], fake_sample[:, 9:12])
-            else:
-                fake_sample = iwt((fake_sample[:, :3], [torch.stack((fake_sample[:, 3:6], fake_sample[:, 6:9], fake_sample[:, 9:12]), dim=2)]))
-            fake_sample = torch.clamp(fake_sample, -1, 1)
+        fake_sample *= 2
+        if not args.use_pytorch_wavelet:
+            fake_sample = iwt(fake_sample[:, :3], fake_sample[:, 3:6], fake_sample[:, 6:9], fake_sample[:, 9:12])
+        else:
+            fake_sample = iwt((fake_sample[:, :3], [torch.stack((fake_sample[:, 3:6], fake_sample[:, 6:9], fake_sample[:, 9:12]), dim=2)]))
+        fake_sample = torch.clamp(fake_sample, -1, 1)
 
         fake_sample = to_range_0_1(fake_sample) # 0-1
         torchvision.utils.save_image(fake_sample, './samples_{}.jpg'.format(args.dataset), nrow=8, padding=0)
@@ -160,8 +139,8 @@ if __name__ == '__main__':
     parser.add_argument('--measure_time', action='store_true', default=False,
                             help='whether or not measure time')
     parser.add_argument('--epoch_id', type=int, default=1000)
-    parser.add_argument('--num_channels', type=int, default=3,
-                            help='channel of image')
+    parser.add_argument('--num_channels', type=int, default=12,
+                            help='channel of wavelet subbands')
     parser.add_argument('--centered', action='store_false', default=True,
                             help='-1,1 scale')
     parser.add_argument('--use_geometric', action='store_true',default=False)
@@ -228,13 +207,11 @@ if __name__ == '__main__':
         
     # wavelet GAN
     parser.add_argument("--use_pytorch_wavelet", action="store_true")
-    parser.add_argument("--infer_mode", default="only_ll")
     parser.add_argument("--current_resolution", type=int, default=256)
     parser.add_argument("--net_type", default="normal")
     parser.add_argument("--no_use_fbn", action="store_true")
     parser.add_argument("--no_use_freq", action="store_true")
     parser.add_argument("--no_use_residual", action="store_true")
-
 
 
     args = parser.parse_args()

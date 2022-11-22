@@ -151,23 +151,3 @@ def sample_from_model(coefficients, generator, n_time, x_init, T, opt):
             x = x_new.detach()
         
     return x
-
-def sample_from_dual_generators(coefficients, generator, generator_freq, n_time, x_init, T, opt):
-    x = x_init
-    with torch.no_grad():
-        for i in reversed(range(n_time)):
-            t = torch.full((x.size(0),), i, dtype=torch.int64).to(x.device)
-          
-            t_time = t
-            latent_z = torch.randn(x.size(0), opt.nz, device=x.device)
-            latent_z_freq = torch.randn(x.size(0), opt.nz, device=x.device)
-            xl_0 = generator(x[:, :3], t_time, latent_z)
-            # xh_0 = generator_freq(x[:, 3:], t_time, latent_z_freq)
-            xh_0 = generator_freq(torch.cat((xl_0, x[:, 3:].detach()), dim=1), t, latent_z_freq)
-
-            x_0 = torch.cat((xl_0, xh_0), dim=1)
-
-            x_new = sample_posterior(coefficients, x_0, x, t)
-            x = x_new.detach()
-        
-    return x

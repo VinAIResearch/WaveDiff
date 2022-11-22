@@ -37,6 +37,7 @@ import functools
 import torch
 import numpy as np
 from einops import rearrange
+from DWT_IDWT.DWT_IDWT_layer import DWT_2D, IDWT_2D
 
 
 ResnetBlockDDPM = layerspp.ResnetBlockDDPMpp_Adagn
@@ -284,7 +285,7 @@ class NCSNpp(nn.Module):
             mapping_layers.append(self.act)
         self.z_transform = nn.Sequential(*mapping_layers)
         
-    def forward(self, x, time_cond, z): # return_mid=False
+    def forward(self, x, time_cond, z):
         # patchify
         x = rearrange(x, "n c (h p1) (w p2) -> n (p1 p2 c) h w", p1=self.patch_size, p2=self.patch_size)
         # timestep/noise_level embedding; only for continuous training
@@ -368,7 +369,6 @@ class NCSNpp(nn.Module):
         h = modules[m_idx](h, temb, zemb)
         m_idx += 1
 
-        mid_out = h
 
         pyramid = None
 
@@ -442,15 +442,7 @@ class NCSNpp(nn.Module):
         else:
            return h
 
-        # if not self.not_use_tanh:
-        #     h = torch.tanh(h)
-        # if return_mid:
-        #     return h, mid_out
-        # return h
 
-
-from pytorch_wavelets import DWTForward, DWTInverse
-from DWT_IDWT.DWT_IDWT_layer import DWT_2D, IDWT_2D
 @utils.register_model(name='wavelet_ncsnpp')
 class WaveletNCSNpp(NCSNpp):
     """NCSN++ model"""
@@ -703,7 +695,7 @@ class WaveletNCSNpp(NCSNpp):
         self.iwt = IDWT_2D("haar")
 
 
-    def forward(self, x, time_cond, z): # return_mid=False
+    def forward(self, x, time_cond, z):
         # patchify
         x = rearrange(x, "n c (h p1) (w p2) -> n (p1 p2 c) h w", p1=self.patch_size, p2=self.patch_size)
         # timestep/noise_level embedding; only for continuous training
@@ -808,7 +800,6 @@ class WaveletNCSNpp(NCSNpp):
             h = self.iwt(h*2., hlh, hhl, hhh)
         m_idx += 1
 
-        mid_out = h
 
         pyramid = None
 
