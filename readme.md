@@ -7,12 +7,10 @@
 6. [Acknowledgments](#Acknowledgments)
 7. [Contacts](#Contacts)
 
+# Official PyTorch implementation of "Wavelet Diffusion Models are fast and scalable Image Generators"
 <div align="center">
     <img width="1000" alt="teaser" src="assets/single_wavelet.png"/>
 </div>
-
-
-# WaveDiff: An official PyTorch implementation
 
 WaveDiff is a novel wavelet-based diffusion structure that employs low-and-high frequency components of wavelet subbands from both image and feature levels. These are adaptively implemented to accelerate the sampling process while maintaining good generation quality. Experimental results on CelebA-HQ, CIFAR-10, LSUN-Church, and STL-10 datasets show that WaveDiff provides state-of-the-art training and inference speed, which serves as a stepping-stone to offering real-time and high-fidelity diffusion models.
 
@@ -42,9 +40,9 @@ We trained on four datasets, including CIFAR10, STL10, LSUN Church Outdoor 256 a
 
 For CIFAR10 and STL10, they will be automatically downloaded in the first time execution. 
 
-For CelebA HQ (256) and LSUN, please check [here](https://github.com/NVlabs/NVAE#set-up-file-paths-and-data) for dataset preparation.
+For CelebA HQ (256) and LSUN, please check out [here](https://github.com/NVlabs/NVAE#set-up-file-paths-and-data) for dataset preparation.
 
-For CelebA HQ (512), please follow .... 
+For CelebA HQ (512), please download data at [here](https://drive.google.com/file/d/1E23HCNL-v9c54Wnzkm9yippBW8IaLUXp/view?usp=share_link) and then generate [LMDB](https://lmdb.readthedocs.io/en/release/) format dataset by [Torch Toolbox](https://github.com/PistonY/torch-toolbox#5-make-and-use-lmdb-dataset). 
 
 Once a dataset is downloaded, please put it in `data/` directory as follows:
 ```
@@ -119,7 +117,7 @@ Model performance and pretrained checkpoints are provided as below:
 
 Inference time is computed over 300 trials on a single NVIDIA A100 GPU for a batch size of 100, except for the one of high-resolution CelebA-HQ $(512 \times 512)$ is computed for a batch of 25 samples.
 
-Downloaded pretrained models should be put at `saved_info/wdd_gan/<DATASET>/` directory where all `<DATASET>` are listed in [How to run](#how-to-run).
+Downloaded pretrained models should be put at `saved_info/wdd_gan/<DATASET>/` directory where all `<DATASET>` are listed in [How to run](#how-to-run) section.
 
 ## Evaluation ##
 ### Inference ###
