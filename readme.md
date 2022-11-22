@@ -66,7 +66,7 @@ where:
 
 Note, please set agrument `--exp` correspondingly for both `train` and `test` mode. All of detailed configurations are well set in [run.sh](./run.sh). 
 
-**GPU allocation**: Our work is experimented on NVIDIA 40GB A100 GPUs. Namely, we use a single GPU for CIFAR10 and STL10, 2 GPUs for CelebA-HQ 256, 4 GPUs for LSUN, and 8 GPUs for CelebA-HQ 512. 
+**GPU allocation**: Our work is experimented on NVIDIA 40GB A100 GPUs. For `train` mode, we use a single GPU for CIFAR10 and STL10, 2 GPUs for CelebA-HQ 256, 4 GPUs for LSUN, and 8 GPUs for CelebA-HQ 512. For `test` mode, only a single GPU is required for all experiments.
 
 ## Results ##
 Model performance and pretrained checkpoints are provided as below:
