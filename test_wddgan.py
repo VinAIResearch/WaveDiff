@@ -19,7 +19,6 @@ from DWT_IDWT.DWT_IDWT_layer import DWT_2D, IDWT_2D
 from pytorch_wavelets import DWTForward, DWTInverse
 
 from diffusion import *
-from freq_utils import *
 
 #%%
 def sample_and_test(args):
@@ -95,8 +94,6 @@ def sample_and_test(args):
             for rep in range(repetitions):
                 starter.record()
                 fake_sample = sample_from_model(pos_coeff, netG, args.num_timesteps, x_t_1, T, args)
-                if args.magnify_data:
-                    fake_sample = demagnified_function(fake_sample, train_mode=args.infer_mode)
 
                 fake_sample *= 2.
                 fake_sample = iwt((fake_sample[:, :3], [torch.stack((fake_sample[:, 3:6], fake_sample[:, 6:9], fake_sample[:, 9:12]), dim=2)]))
@@ -117,9 +114,6 @@ def sample_and_test(args):
                 x_t_1 = torch.randn(args.batch_size, args.num_channels,args.image_size, args.image_size).to(device)
                 fake_sample = sample_from_model(pos_coeff, netG, args.num_timesteps, x_t_1,T,  args)
 
-                if args.magnify_data:
-                    fake_sample = demagnified_function(fake_sample, train_mode=args.infer_mode)
-                
                 if args.infer_mode == "both":
                     fake_sample *= 2
                     if not args.use_pytorch_wavelet:
@@ -144,8 +138,6 @@ def sample_and_test(args):
         x_t_1 = torch.randn(args.batch_size, args.num_channels,args.image_size, args.image_size).to(device)
         fake_sample = sample_from_model(pos_coeff, netG, args.num_timesteps, x_t_1,T,  args)
 
-        if args.magnify_data:
-            fake_sample = demagnified_function(fake_sample, train_mode=args.infer_mode)
         if args.infer_mode == "both":
             fake_sample *= 2
             if not args.use_pytorch_wavelet:
@@ -239,7 +231,6 @@ if __name__ == '__main__':
     parser.add_argument("--infer_mode", default="only_ll")
     parser.add_argument("--current_resolution", type=int, default=256)
     parser.add_argument("--net_type", default="normal")
-    parser.add_argument("--magnify_data", action="store_true")
     parser.add_argument("--no_use_fbn", action="store_true")
     parser.add_argument("--no_use_freq", action="store_true")
     parser.add_argument("--no_use_residual", action="store_true")
