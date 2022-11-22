@@ -1,35 +1,57 @@
-# Official PyTorch implementation of "Wavelet Diffusion Models are fast and scalable Image Generators"
-
-<!-- <div align="center">
-  <a href="https://xavierxiao.github.io/" target="_blank">Zhisheng&nbsp;Xiao</a> &emsp; <b>&middot;</b> &emsp;
-  <a href="https://karstenkreis.github.io/" target="_blank">Karsten&nbsp;Kreis</a> &emsp; <b>&middot;</b> &emsp;
-  <a href="http://latentspace.cc/arash_vahdat/" target="_blank">Arash&nbsp;Vahdat</a>
-  <br> <br>
-  <a href="https://nvlabs.github.io/denoising-diffusion-gan/" target="_blank">Project&nbsp;Page</a>
-</div>
-<br>
-<br> -->
+##### Table of contents
+1. [Installation](#Installation)
+2. [Dataset preparation](#Dataset-preparation)
+3. [How to run](#How-to-run)
+4. [Results](#Results)
+5. [Evaluation](#Evaluation)
+6. [Acknowledgments](#Acknowledgments)
+7. [Contacts](#Contacts)
 
 <div align="center">
     <img width="1000" alt="teaser" src="assets/single_wavelet.png"/>
 </div>
 
-**Abstract:**
-Diffusion models are rising as a powerful solution for high-fidelity image generation, which exceeds GANs in quality in many circumstances. However, their slow training and inference speed is a huge bottleneck, blocking them from being used in real-time applications. A recent DiffusionGAN method significantly decreases the models' running time by reducing the number of sampling steps from thousands to several, but their speeds still largely lag behind the GAN counterparts. This paper aims to reduce the speed gap by proposing a novel wavelet-based diffusion structure. We extract low-and-high frequency components from both image and feature levels via wavelet decomposition and adaptively handle these components for faster processing while maintaining good generation quality. Furthermore, we propose to use a reconstruction term, which effectively boosts the model training convergence. Experimental results on CelebA-HQ, CIFAR-10, LSUN-Church, and STL-10 datasets prove our solution is a stepping-stone to offering real-time and high-fidelity diffusion models.
+
+# WaveDiff: An official PyTorch implementation
+
+WaveDiff is a novel wavelet-based diffusion structure that employs low-and-high frequency components of wavelet subbands from both image and feature levels. These are adaptively implemented to accelerate the sampling process while maintaining good generation quality. Experimental results on CelebA-HQ, CIFAR-10, LSUN-Church, and STL-10 datasets show that WaveDiff provides state-of-the-art training and inference speed, which serves as a stepping-stone to offering real-time and high-fidelity diffusion models.
+
+
+Details of the model architecture and experimental results can be found in [our following paper]():
+```bibtex
+@article{hao2022wavelet,
+  title={Wavelet Diffusion Models are fast and scalable Image Generators},
+  author={Hao Phung and Quan Dao and Anh Tran},
+  journal={arXiv preprint arXiv:<submit_number>},
+  year={2022}
+}
+```
+ **Please CITE** our paper whenever this repository is used to help produce published results or incorporated into other software.
 
 ## Installation ##
 Latest Pytorch version is required. 
 
 Install neccessary libraries:
-```
+```bash
 pip install -r requirements.txt
 ```
 For `pytorch_wavelets`, please follow [here](https://github.com/fbcotter/pytorch_wavelets.git).
 
-## Set up datasets ##
+## Dataset preparation ##
 We trained on four datasets, including CIFAR10, STL10, LSUN Church Outdoor 256 and CelebA HQ (256 & 512). 
-Please check [here](https://github.com/NVlabs/NVAE#set-up-file-paths-and-data) for dataset preparation.
+CIFAR10 and STL10 will be automatically downloaded in the first time execution. 
+For CelebA HQ (256) and LSUN, please check [here](https://github.com/NVlabs/NVAE#set-up-file-paths-and-data) for dataset preparation.
+For CelebA HQ (512), please follow .... 
 
+Once a dataset is downloaded, please put it in `data/` directory as follows:
+```
+data/
+├── STL-10
+├── celeba
+├── celeba_512
+├── cifar-10
+└── lsun
+```
 
 ## How to run ##
 We provide a bash script for our experiments on different datasets. The syntax is following:
@@ -37,23 +59,13 @@ We provide a bash script for our experiments on different datasets. The syntax i
 bash run.sh <DATASET> <MODE> <#GPUS>
 ```
 where: 
-- `<DATASET>`: "cifar10", "stl10", "celeba_256", "celeba_512", and "lsun".
-- `<MODE>`: "train" and "test".
+- `<DATASET>`: `cifar10`, `stl10`, `celeba_256`, `celeba_512`, and `lsun`.
+- `<MODE>`: `train` and `test`.
 - `<#GPUS>`: the number of gpus (e.g. 1, 2, 4, 8).
 
-Note, please set agrument `--exp` correspondingly for both "train" and "test" mode. All of detailed configurations are well set in [run.sh](./run.sh). 
+Note, please set agrument `--exp` correspondingly for both `train` and `test` mode. All of detailed configurations are well set in [run.sh](./run.sh). 
 
-**GPU allocation**: Our work is experimented on NVIDIA 40GB A100 GPUs. Namely, CIFAR10 and STL10 are trained on single gpu, CelebA-HQ 256 and LSUN are trained on 4 gpus, and CelebA-HQ 512 is on 8 gpus. 
-
-## Inference ##
-Samples can be generated by calling [run.sh](./run.sh) with "test" mode.
-
-## Evaluation ##
-### FID ###
-To compute fid of pretrained models on a specific epoch, we can add additional arguments including ```--compute_fid``` and ```--real_img_dir /path/to/real/images``` of the corresponding experiments in [run.sh](./run.sh).
-
-### Recall ###
-We adopt the official Pytorch implementation of [StyleGAN2-ADA](https://github.com/NVlabs/stylegan2-ada-pytorch.git) to compute Recall of generated samples.
+**GPU allocation**: Our work is experimented on NVIDIA 40GB A100 GPUs. Namely, we use a single GPU for CIFAR10 and STL10, 2 GPUs for CelebA-HQ 256, 4 GPUs for LSUN, and 8 GPUs for CelebA-HQ 512. 
 
 ## Results ##
 Model performance and pretrained checkpoints are provided as below:
@@ -70,51 +82,54 @@ Model performance and pretrained checkpoints are provided as below:
     <td>4.01</td>
     <td>0.55</td>
     <td>0.08</td>
-    <td>[link](https://www.dropbox.com/s/dkr8af9nmscane0/netG_1300.pth?dl=0)</td>
+    <td><a href="https://www.dropbox.com/s/dkr8af9nmscane0/netG_1300.pth?dl=0">netG_1300.pth</a></td>
   </tr>
   <tr>
     <td>STL-10</td>
     <td>12.93</td>
     <td>0.41</td>
     <td>0.38</td>
-    <td>[link](https://www.dropbox.com/s/whqois9i3fvpp5d/netG_600.pth?dl=0)</td>
+    <td><a href="https://www.dropbox.com/s/whqois9i3fvpp5d/netG_600.pth?dl=0">netG_600.pth</a></td>
   </tr>
   <tr>
     <td>CelebA-HQ (256 x 256) </td>
     <td>5.94</td>
     <td>0.37</td>
     <td>0.79</td>
-    <td>[link](https://www.dropbox.com/s/1am1e4e9c9h7cab/netG_475.pth?dl=0)</td>
+    <td><a href="https://www.dropbox.com/s/1am1e4e9c9h7cab/netG_475.pth?dl=0">netG_475.pth</a></td>
   </tr>
   <tr>
     <td>CelebA-HQ (512 x 512) </td>
     <td>6.40</td>
     <td>0.35</td>
     <td>0.59</td>
-    <td>[link](https://www.dropbox.com/s/7ifkutwd51mmwgk/netG_350.pth?dl=0)</td>
+    <td><a href="https://www.dropbox.com/s/7ifkutwd51mmwgk/netG_350.pth?dl=0">netG_350.pth</a></td>
   </tr>
   <tr>
     <td>LSUN Church</td>
     <td>5.06</td>
     <td>0.40</td>
     <td>1.54</td>
-    <td>[link](https://www.dropbox.com/s/395l9um0bre67r8/netG_400.pth?dl=0)</td>
+    <td><a href="https://www.dropbox.com/s/395l9um0bre67r8/netG_400.pth?dl=0">netG_400.pth</a></td>
   </tr>
 </table>
 
-Inference time is computed over 300 trials on a single NVIDIA A100 GPU for a batch size of 100, except for the one of high-resolution CelebA-HQ $`(512 \times 512)`$ is computed for a batch of 25 samples.
+Inference time is computed over 300 trials on a single NVIDIA A100 GPU for a batch size of 100, except for the one of high-resolution CelebA-HQ $(512 \times 512)$ is computed for a batch of 25 samples.
 
-Downloaded pretrained models should be put at `saved_info/wdd_gan/<DATASET>/` directory where `<DATASET>` is listed in [the section above](#how-to-run). Note: All of the attached links are anonymous.
+Downloaded pretrained models should be put at `saved_info/wdd_gan/<DATASET>/` directory where all `<DATASET>` are listed in [How to run](#how-to-run).
 
-<!-- ## Bibtex ##
-Cite our paper using the following bibtex item:
+## Evaluation ##
+### Inference ###
+Samples can be generated by calling [run.sh](./run.sh) with `test` mode.
 
-```
-@inproceedings{
-xiao2022tackling,
-title={Tackling the Generative Learning Trilemma with Denoising Diffusion GANs},
-author={Zhisheng Xiao and Karsten Kreis and Arash Vahdat},
-booktitle={International Conference on Learning Representations},
-year={2022}
-}
-``` -->
+### FID ###
+To compute fid of pretrained models on a specific epoch, we can add additional arguments including ```--compute_fid``` and ```--real_img_dir /path/to/real/images``` of the corresponding experiments in [run.sh](./run.sh).
+
+### Recall ###
+We adopt the official Pytorch implementation of [StyleGAN2-ADA](https://github.com/NVlabs/stylegan2-ada-pytorch.git) to compute Recall of generated samples.
+
+## Acknowledgments
+Thanks to Xiao et al for releasing their official implementation of the [DDGAN](https://github.com/NVlabs/denoising-diffusion-gan.git) paper.
+
+## Contacts ##
+If you have any problems, please open an issue in this repository or ping an email to [tienhaophung@gmail.com](mailto:tienhaophung@gmail.com).
