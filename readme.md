@@ -66,7 +66,7 @@ where:
 
 Note, please set agrument `--exp` correspondingly for both `train` and `test` mode. All of detailed configurations are well set in [run.sh](./run.sh). 
 
-**GPU allocation**: Our work is experimented on NVIDIA 40GB A100 GPUs. Namely, we use a single GPU for CIFAR10 and STL10, 2 GPUs for CelebA-HQ 256, 4 GPUs for LSUN, and 8 GPUs for CelebA-HQ 512. 
+**GPU allocation**: Our work is experimented on NVIDIA 40GB A100 GPUs. For `train` mode, we use a single GPU for CIFAR10 and STL10, 2 GPUs for CelebA-HQ 256, 4 GPUs for LSUN, and 8 GPUs for CelebA-HQ 512. For `test` mode, only a single GPU is required for all experiments.
 
 ## Results ##
 Model performance and pretrained checkpoints are provided as below:
@@ -83,41 +83,41 @@ Model performance and pretrained checkpoints are provided as below:
     <td>4.01</td>
     <td>0.55</td>
     <td>0.08</td>
-    <td><a href="https://www.dropbox.com/s/dkr8af9nmscane0/netG_1300.pth?dl=0">netG_1300.pth</a></td>
+    <td><a href="https://www.dropbox.com/sh/d1h1b9y0hjptnju/AABCdqJWnTq45uK2SRr6S_qGa?dl=0">netG_1300.pth</a></td>
   </tr>
   <tr>
     <td>STL-10</td>
     <td>12.93</td>
     <td>0.41</td>
     <td>0.38</td>
-    <td><a href="https://www.dropbox.com/s/whqois9i3fvpp5d/netG_600.pth?dl=0">netG_600.pth</a></td>
+    <td><a href="https://www.dropbox.com/sh/wo72rvmfyzam8hx/AADzfJMnFTp61KpFGeErd5Dta?dl=0">netG_600.pth</a></td>
   </tr>
   <tr>
     <td>CelebA-HQ (256 x 256) </td>
     <td>5.94</td>
     <td>0.37</td>
     <td>0.79</td>
-    <td><a href="https://www.dropbox.com/s/1am1e4e9c9h7cab/netG_475.pth?dl=0">netG_475.pth</a></td>
+    <td><a href="https://www.dropbox.com/sh/x32f74anuvglyat/AAAcrrRy5MySj39ZELd23q5Oa?dl=0">netG_475.pth</a></td>
   </tr>
   <tr>
     <td>CelebA-HQ (512 x 512) </td>
     <td>6.40</td>
     <td>0.35</td>
     <td>0.59</td>
-    <td><a href="https://www.dropbox.com/s/7ifkutwd51mmwgk/netG_350.pth?dl=0">netG_350.pth</a></td>
+    <td><a href="https://www.dropbox.com/sh/r1ysz9u1kxla4qo/AAC6WjygEn31BhoNy4UfeRvca?dl=0">netG_350.pth</a></td>
   </tr>
   <tr>
     <td>LSUN Church</td>
     <td>5.06</td>
     <td>0.40</td>
     <td>1.54</td>
-    <td><a href="https://www.dropbox.com/s/395l9um0bre67r8/netG_400.pth?dl=0">netG_400.pth</a></td>
+    <td><a href="https://www.dropbox.com/sh/nr44t8pwnf5xyxd/AACn0CJ-xa4ctr4oD5hrGhSqa?dl=0">netG_400.pth</a></td>
   </tr>
 </table>
 
 Inference time is computed over 300 trials on a single NVIDIA A100 GPU for a batch size of 100, except for the one of high-resolution CelebA-HQ $(512 \times 512)$ is computed for a batch of 25 samples.
 
-Downloaded pretrained models should be put at `saved_info/wdd_gan/<DATASET>/` directory where all `<DATASET>` are listed in [How to run](#how-to-run) section.
+Downloaded pre-trained models should be put in `saved_info/wdd_gan/<DATASET>/<EXP>` directory where `<DATASET>` is defined in [How to run](#how-to-run) section and `<EXP>` corresponds to the folder name of pre-trained checkpoints.
 
 ## Evaluation ##
 ### Inference ###
