@@ -12,15 +12,15 @@
 # to this file are subject to the same BSD 3-Clause License.
 # ---------------------------------------------------------------
 
-from torchvision.datasets.vision import VisionDataset
-from PIL import Image
+import io
 import os
 import os.path
-import io
-import string
-from collections.abc import Iterable
 import pickle
-from torchvision.datasets.utils import verify_str_arg, iterable_to_str
+from collections.abc import Iterable
+
+from PIL import Image
+from torchvision.datasets.utils import iterable_to_str, verify_str_arg
+from torchvision.datasets.vision import VisionDataset
 
 
 class LSUNClass(VisionDataset):
@@ -131,10 +131,13 @@ class LSUN(VisionDataset):
                 msg_fmtstr = "Unknown value '{}' for {}. Valid values are {{{}}}."
                 msg = msg_fmtstr.format(category, "LSUN class",
                                         iterable_to_str(categories))
-                verify_str_arg(category, valid_values=categories, custom_msg=msg)
+                verify_str_arg(
+                    category, valid_values=categories, custom_msg=msg)
 
-                msg = msg_fmtstr.format(dset_opt, "postfix", iterable_to_str(dset_opts))
-                verify_str_arg(dset_opt, valid_values=dset_opts, custom_msg=msg)
+                msg = msg_fmtstr.format(
+                    dset_opt, "postfix", iterable_to_str(dset_opts))
+                verify_str_arg(
+                    dset_opt, valid_values=dset_opts, custom_msg=msg)
 
         return classes
 

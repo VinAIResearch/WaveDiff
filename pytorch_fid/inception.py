@@ -12,6 +12,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
 
+
 try:
     from torchvision.models.utils import load_state_dict_from_url
 except ImportError:

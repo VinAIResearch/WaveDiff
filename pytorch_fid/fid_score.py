@@ -47,23 +47,25 @@ limitations under the License.
 import os
 import pathlib
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
-from multiprocessing import cpu_count
 
 import numpy as np
 import torch
-import torch.nn.functional as F
+
+# -------------------- Address Too many open files error -----------------------
+# Ref: https://github.com/pytorch/pytorch/issues/11201
+import torch.multiprocessing
 import torchvision.transforms as TF
 from PIL import Image
 from scipy import linalg
 from torch.nn.functional import adaptive_avg_pool2d
 
-# -------------------- Address Too many open files error -----------------------
-# Ref: https://github.com/pytorch/pytorch/issues/11201
-import torch.multiprocessing
+
 torch.multiprocessing.set_sharing_strategy('file_system')
+
 
 def set_worker_sharing_strategy(worker_id: int) -> None:
     torch.multiprocessing.set_sharing_strategy('file_system')
+
 
 try:
     from tqdm import tqdm
@@ -92,8 +94,6 @@ parser.add_argument('path', type=str, nargs=2,
 
 IMAGE_EXTENSIONS = {'bmp', 'jpg', 'jpeg', 'pgm', 'png', 'ppm',
                     'tif', 'tiff', 'webp'}
-
-
 
 
 class ImagePathDataset(torch.utils.data.Dataset):
@@ -140,7 +140,7 @@ def get_activations(files, model, batch_size=50, dims=2048, device='cpu', resize
 
     if resize > 0:
         print('Resized to ({}, {})'.format(resize, resize))
-        dataset = ImagePathDataset(files, transforms=TF.Compose([TF.Resize(size=(resize, resize)), 
+        dataset = ImagePathDataset(files, transforms=TF.Compose([TF.Resize(size=(resize, resize)),
                                                                  TF.ToTensor()]))
     else:
         dataset = ImagePathDataset(files, transforms=TF.ToTensor())
@@ -148,8 +148,8 @@ def get_activations(files, model, batch_size=50, dims=2048, device='cpu', resize
                                              batch_size=batch_size,
                                              shuffle=False,
                                              drop_last=False,
-                                             num_workers=4, # cpu_count(),
-											 worker_init_fn=set_worker_sharing_strategy,)
+                                             num_workers=4,  # cpu_count(),
+                                             worker_init_fn=set_worker_sharing_strategy)
 
     pred_arr = np.empty((len(files), dims))
 
@@ -262,10 +262,9 @@ def compute_statistics_of_path(path, model, batch_size, dims, device, resize=0):
         f = np.load(path, allow_pickle=True)
         try:
             m, s = f['mu'][:], f['sigma'][:]
-        except:
+        except KeyError:
             m, s = f.item()['mu'][:], f.item()['sigma'][:]
     else:
-        path_str = path[:]
         path = pathlib.Path(path)
         files = sorted([file for ext in IMAGE_EXTENSIONS
                        for file in path.glob('*.{}'.format(ext))])
@@ -288,11 +287,10 @@ def calculate_fid_given_paths(paths, batch_size, device, dims, resize=0):
                                         dims, device, resize)
     m2, s2 = compute_statistics_of_path(paths[1], model, batch_size,
                                         dims, device, resize)
-    
+
     del model
     fid_value = calculate_frechet_distance(m1, s1, m2, s2)
     return fid_value
-
 
 
 def main():

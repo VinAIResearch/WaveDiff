@@ -55,3 +55,4 @@ slurm*.err
 
 # pycache
 __pycache__
+.vscode

@@ -2,20 +2,30 @@
 自定义 pytorch 层，实现一维、二维、三维张量的 DWT 和 IDWT，未考虑边界延拓
 只有当图像行列数都是偶数，且重构滤波器组低频分量长度为 2 时，才能精确重构，否则在边界处有误差。
 """
-import wave
-import numpy as np
 import math
-from torch.nn import Module
-from .DWT_IDWT_Functions import *
-import pywt
+# import wave
 
-__all__ = ['DWT_1D', 'IDWT_1D', 'DWT_2D', 'IDWT_2D', 'DWT_3D', 'IDWT_3D', 'DWT_2D_tiny']
+import numpy as np
+import pywt
+import torch
+from torch.nn import Module
+
+from .DWT_IDWT_Functions import DWTFunction_1D, IDWTFunction_1D, \
+    DWTFunction_2D_tiny, DWTFunction_2D, IDWTFunction_2D, \
+    DWTFunction_3D, IDWTFunction_3D
+
+
+__all__ = ['DWT_1D', 'IDWT_1D', 'DWT_2D',
+           'IDWT_2D', 'DWT_3D', 'IDWT_3D', 'DWT_2D_tiny']
+
+
 class DWT_1D(Module):
     """
     input: the 1D data to be decomposed -- (N, C, Length)
     output: lfc -- (N, C, Length/2)
             hfc -- (N, C, Length/2)
     """
+
     def __init__(self, wavename):
         """
         1D discrete wavelet transform (DWT) for sequence decomposition
@@ -39,21 +49,22 @@ class DWT_1D(Module):
         """
         L1 = self.input_height
         L = math.floor(L1 / 2)
-        matrix_h = np.zeros( ( L,      L1 + self.band_length - 2 ) )
-        matrix_g = np.zeros( ( L1 - L, L1 + self.band_length - 2 ) )
-        end = None if self.band_length_half == 1 else (-self.band_length_half+1)
+        matrix_h = np.zeros((L, L1 + self.band_length - 2))
+        matrix_g = np.zeros((L1 - L, L1 + self.band_length - 2))
+        end = None if self.band_length_half == 1 else (
+            - self.band_length_half + 1)
         index = 0
         for i in range(L):
             for j in range(self.band_length):
-                matrix_h[i, index+j] = self.band_low[j]
+                matrix_h[i, index + j] = self.band_low[j]
             index += 2
         index = 0
         for i in range(L1 - L):
             for j in range(self.band_length):
-                matrix_g[i, index+j] = self.band_high[j]
+                matrix_g[i, index + j] = self.band_high[j]
             index += 2
-        matrix_h = matrix_h[:,(self.band_length_half-1):end]
-        matrix_g = matrix_g[:,(self.band_length_half-1):end]
+        matrix_h = matrix_h[:, (self.band_length_half - 1):end]
+        matrix_g = matrix_g[:, (self.band_length_half - 1):end]
         if torch.cuda.is_available():
             self.matrix_low = torch.Tensor(matrix_h).cuda()
             self.matrix_high = torch.Tensor(matrix_g).cuda()
@@ -80,6 +91,7 @@ class IDWT_1D(Module):
             hfc -- (N, C, Length/2)
     output: the original data -- (N, C, Length)
     """
+
     def __init__(self, wavename):
         """
         1D inverse DWT (IDWT) for sequence reconstruction
@@ -105,21 +117,22 @@ class IDWT_1D(Module):
         """
         L1 = self.input_height
         L = math.floor(L1 / 2)
-        matrix_h = np.zeros( ( L,      L1 + self.band_length - 2 ) )
-        matrix_g = np.zeros( ( L1 - L, L1 + self.band_length - 2 ) )
-        end = None if self.band_length_half == 1 else (-self.band_length_half+1)
+        matrix_h = np.zeros((L, L1 + self.band_length - 2))
+        matrix_g = np.zeros((L1 - L, L1 + self.band_length - 2))
+        end = None if self.band_length_half == 1 else (
+            - self.band_length_half + 1)
         index = 0
         for i in range(L):
             for j in range(self.band_length):
-                matrix_h[i, index+j] = self.band_low[j]
+                matrix_h[i, index + j] = self.band_low[j]
             index += 2
         index = 0
         for i in range(L1 - L):
             for j in range(self.band_length):
-                matrix_g[i, index+j] = self.band_high[j]
+                matrix_g[i, index + j] = self.band_high[j]
             index += 2
-        matrix_h = matrix_h[:,(self.band_length_half-1):end]
-        matrix_g = matrix_g[:,(self.band_length_half-1):end]
+        matrix_h = matrix_h[:, (self.band_length_half - 1):end]
+        matrix_g = matrix_g[:, (self.band_length_half - 1):end]
         if torch.cuda.is_available():
             self.matrix_low = torch.Tensor(matrix_h).cuda()
             self.matrix_high = torch.Tensor(matrix_g).cuda()
@@ -149,6 +162,7 @@ class DWT_2D_tiny(Module):
     DWT_2D_tiny only outputs the low-frequency component, which is used in WaveCNet;
     the all four components could be get using DWT_2D, which is used in WaveUNet.
     """
+
     def __init__(self, wavename):
         """
         2D discrete wavelet transform (DWT) for 2D image decomposition
@@ -171,31 +185,36 @@ class DWT_2D_tiny(Module):
         """
         L1 = np.max((self.input_height, self.input_width))
         L = math.floor(L1 / 2)
-        matrix_h = np.zeros( ( L,      L1 + self.band_length - 2 ) )
-        matrix_g = np.zeros( ( L1 - L, L1 + self.band_length - 2 ) )
-        end = None if self.band_length_half == 1 else (-self.band_length_half+1)
+        matrix_h = np.zeros((L, L1 + self.band_length - 2))
+        matrix_g = np.zeros((L1 - L, L1 + self.band_length - 2))
+        end = None if self.band_length_half == 1 else (
+            - self.band_length_half + 1)
 
         index = 0
         for i in range(L):
             for j in range(self.band_length):
-                matrix_h[i, index+j] = self.band_low[j]
+                matrix_h[i, index + j] = self.band_low[j]
             index += 2
-        matrix_h_0 = matrix_h[0:(math.floor(self.input_height / 2)), 0:(self.input_height + self.band_length - 2)]
-        matrix_h_1 = matrix_h[0:(math.floor(self.input_width / 2)), 0:(self.input_width + self.band_length - 2)]
+        matrix_h_0 = matrix_h[0:(math.floor(
+            self.input_height / 2)), 0:(self.input_height + self.band_length - 2)]
+        matrix_h_1 = matrix_h[0:(math.floor(
+            self.input_width / 2)), 0:(self.input_width + self.band_length - 2)]
 
         index = 0
         for i in range(L1 - L):
             for j in range(self.band_length):
-                matrix_g[i, index+j] = self.band_high[j]
+                matrix_g[i, index + j] = self.band_high[j]
             index += 2
-        matrix_g_0 = matrix_g[0:(self.input_height - math.floor(self.input_height / 2)),0:(self.input_height + self.band_length - 2)]
-        matrix_g_1 = matrix_g[0:(self.input_width - math.floor(self.input_width / 2)),0:(self.input_width + self.band_length - 2)]
+        matrix_g_0 = matrix_g[0:(self.input_height - math.floor(
+            self.input_height / 2)), 0:(self.input_height + self.band_length - 2)]
+        matrix_g_1 = matrix_g[0:(self.input_width - math.floor(
+            self.input_width / 2)), 0:(self.input_width + self.band_length - 2)]
 
-        matrix_h_0 = matrix_h_0[:,(self.band_length_half-1):end]
-        matrix_h_1 = matrix_h_1[:,(self.band_length_half-1):end]
+        matrix_h_0 = matrix_h_0[:, (self.band_length_half - 1):end]
+        matrix_h_1 = matrix_h_1[:, (self.band_length_half - 1):end]
         matrix_h_1 = np.transpose(matrix_h_1)
-        matrix_g_0 = matrix_g_0[:,(self.band_length_half-1):end]
-        matrix_g_1 = matrix_g_1[:,(self.band_length_half-1):end]
+        matrix_g_0 = matrix_g_0[:, (self.band_length_half - 1):end]
+        matrix_g_1 = matrix_g_1[:, (self.band_length_half - 1):end]
         matrix_g_1 = np.transpose(matrix_g_1)
 
         if torch.cuda.is_available():
@@ -233,6 +252,7 @@ class DWT_2D(Module):
               hfc_hl: (N, C, H/2, W/2)
               hfc_hh: (N, C, H/2, W/2)
     """
+
     def __init__(self, wavename):
         """
         2D discrete wavelet transform (DWT) for 2D image decomposition
@@ -255,31 +275,36 @@ class DWT_2D(Module):
         """
         L1 = np.max((self.input_height, self.input_width))
         L = math.floor(L1 / 2)
-        matrix_h = np.zeros( ( L,      L1 + self.band_length - 2 ) )
-        matrix_g = np.zeros( ( L1 - L, L1 + self.band_length - 2 ) )
-        end = None if self.band_length_half == 1 else (-self.band_length_half+1)
+        matrix_h = np.zeros((L, L1 + self.band_length - 2))
+        matrix_g = np.zeros((L1 - L, L1 + self.band_length - 2))
+        end = None if self.band_length_half == 1 else (
+            - self.band_length_half + 1)
 
         index = 0
         for i in range(L):
             for j in range(self.band_length):
-                matrix_h[i, index+j] = self.band_low[j]
+                matrix_h[i, index + j] = self.band_low[j]
             index += 2
-        matrix_h_0 = matrix_h[0:(math.floor(self.input_height / 2)), 0:(self.input_height + self.band_length - 2)]
-        matrix_h_1 = matrix_h[0:(math.floor(self.input_width / 2)), 0:(self.input_width + self.band_length - 2)]
+        matrix_h_0 = matrix_h[0:(math.floor(
+            self.input_height / 2)), 0:(self.input_height + self.band_length - 2)]
+        matrix_h_1 = matrix_h[0:(math.floor(
+            self.input_width / 2)), 0:(self.input_width + self.band_length - 2)]
 
         index = 0
         for i in range(L1 - L):
             for j in range(self.band_length):
-                matrix_g[i, index+j] = self.band_high[j]
+                matrix_g[i, index + j] = self.band_high[j]
             index += 2
-        matrix_g_0 = matrix_g[0:(self.input_height - math.floor(self.input_height / 2)),0:(self.input_height + self.band_length - 2)]
-        matrix_g_1 = matrix_g[0:(self.input_width - math.floor(self.input_width / 2)),0:(self.input_width + self.band_length - 2)]
+        matrix_g_0 = matrix_g[0:(self.input_height - math.floor(
+            self.input_height / 2)), 0:(self.input_height + self.band_length - 2)]
+        matrix_g_1 = matrix_g[0:(self.input_width - math.floor(
+            self.input_width / 2)), 0:(self.input_width + self.band_length - 2)]
 
-        matrix_h_0 = matrix_h_0[:,(self.band_length_half-1):end]
-        matrix_h_1 = matrix_h_1[:,(self.band_length_half-1):end]
+        matrix_h_0 = matrix_h_0[:, (self.band_length_half - 1):end]
+        matrix_h_1 = matrix_h_1[:, (self.band_length_half - 1):end]
         matrix_h_1 = np.transpose(matrix_h_1)
-        matrix_g_0 = matrix_g_0[:,(self.band_length_half-1):end]
-        matrix_g_1 = matrix_g_1[:,(self.band_length_half-1):end]
+        matrix_g_0 = matrix_g_0[:, (self.band_length_half - 1):end]
+        matrix_g_1 = matrix_g_1[:, (self.band_length_half - 1):end]
         matrix_g_1 = np.transpose(matrix_g_1)
 
         if torch.cuda.is_available():
@@ -317,6 +342,7 @@ class IDWT_2D(Module):
             hfc_hh -- (N, C, H/2, W/2)
     output: the original 2D data -- (N, C, H, W)
     """
+
     def __init__(self, wavename):
         """
         2D inverse DWT (IDWT) for 2D image reconstruction
@@ -341,31 +367,36 @@ class IDWT_2D(Module):
         """
         L1 = np.max((self.input_height, self.input_width))
         L = math.floor(L1 / 2)
-        matrix_h = np.zeros( ( L,      L1 + self.band_length - 2 ) )
-        matrix_g = np.zeros( ( L1 - L, L1 + self.band_length - 2 ) )
-        end = None if self.band_length_half == 1 else (-self.band_length_half+1)
+        matrix_h = np.zeros((L, L1 + self.band_length - 2))
+        matrix_g = np.zeros((L1 - L, L1 + self.band_length - 2))
+        end = None if self.band_length_half == 1 else (
+            - self.band_length_half + 1)
 
         index = 0
         for i in range(L):
             for j in range(self.band_length):
-                matrix_h[i, index+j] = self.band_low[j]
+                matrix_h[i, index + j] = self.band_low[j]
             index += 2
-        matrix_h_0 = matrix_h[0:(math.floor(self.input_height / 2)), 0:(self.input_height + self.band_length - 2)]
-        matrix_h_1 = matrix_h[0:(math.floor(self.input_width / 2)), 0:(self.input_width + self.band_length - 2)]
+        matrix_h_0 = matrix_h[0:(math.floor(
+            self.input_height / 2)), 0:(self.input_height + self.band_length - 2)]
+        matrix_h_1 = matrix_h[0:(math.floor(
+            self.input_width / 2)), 0:(self.input_width + self.band_length - 2)]
 
         index = 0
         for i in range(L1 - L):
             for j in range(self.band_length):
-                matrix_g[i, index+j] = self.band_high[j]
+                matrix_g[i, index + j] = self.band_high[j]
             index += 2
-        matrix_g_0 = matrix_g[0:(self.input_height - math.floor(self.input_height / 2)),0:(self.input_height + self.band_length - 2)]
-        matrix_g_1 = matrix_g[0:(self.input_width - math.floor(self.input_width / 2)),0:(self.input_width + self.band_length - 2)]
+        matrix_g_0 = matrix_g[0:(self.input_height - math.floor(
+            self.input_height / 2)), 0:(self.input_height + self.band_length - 2)]
+        matrix_g_1 = matrix_g[0:(self.input_width - math.floor(
+            self.input_width / 2)), 0:(self.input_width + self.band_length - 2)]
 
-        matrix_h_0 = matrix_h_0[:,(self.band_length_half-1):end]
-        matrix_h_1 = matrix_h_1[:,(self.band_length_half-1):end]
+        matrix_h_0 = matrix_h_0[:, (self.band_length_half - 1):end]
+        matrix_h_1 = matrix_h_1[:, (self.band_length_half - 1):end]
         matrix_h_1 = np.transpose(matrix_h_1)
-        matrix_g_0 = matrix_g_0[:,(self.band_length_half-1):end]
-        matrix_g_1 = matrix_g_1[:,(self.band_length_half-1):end]
+        matrix_g_0 = matrix_g_0[:, (self.band_length_half - 1):end]
+        matrix_g_1 = matrix_g_1[:, (self.band_length_half - 1):end]
         matrix_g_1 = np.transpose(matrix_g_1)
         if torch.cuda.is_available():
             self.matrix_low_0 = torch.Tensor(matrix_h_0).cuda()
@@ -391,7 +422,8 @@ class IDWT_2D(Module):
         :param HH: the high-frequency component, hfc_hh
         :return: the original 2D data
         """
-        assert len(LL.size()) == len(LH.size()) == len(HL.size()) == len(HH.size()) == 4
+        assert len(LL.size()) == len(LH.size()) == len(
+            HL.size()) == len(HH.size()) == 4
         self.input_height = LL.size()[-2] + HH.size()[-2]
         self.input_width = LL.size()[-1] + HH.size()[-1]
         self.get_matrix()
@@ -410,6 +442,7 @@ class DWT_3D(Module):
             hfc_hhl -- (N, C, D/2, H/2, W/2)
             hfc_hhh -- (N, C, D/2, H/2, W/2)
     """
+
     def __init__(self, wavename):
         """
         3D discrete wavelet transform (DWT) for 3D data decomposition
@@ -432,37 +465,44 @@ class DWT_3D(Module):
         """
         L1 = np.max((self.input_height, self.input_width))
         L = math.floor(L1 / 2)
-        matrix_h = np.zeros( ( L,      L1 + self.band_length - 2 ) )
-        matrix_g = np.zeros( ( L1 - L, L1 + self.band_length - 2 ) )
-        end = None if self.band_length_half == 1 else (-self.band_length_half+1)
+        matrix_h = np.zeros((L, L1 + self.band_length - 2))
+        matrix_g = np.zeros((L1 - L, L1 + self.band_length - 2))
+        end = None if self.band_length_half == 1 else (
+            - self.band_length_half + 1)
 
         index = 0
         for i in range(L):
             for j in range(self.band_length):
-                matrix_h[i, index+j] = self.band_low[j]
+                matrix_h[i, index + j] = self.band_low[j]
             index += 2
-        matrix_h_0 = matrix_h[0:(math.floor(self.input_height / 2)), 0:(self.input_height + self.band_length - 2)]
-        matrix_h_1 = matrix_h[0:(math.floor(self.input_width / 2)), 0:(self.input_width + self.band_length - 2)]
-        matrix_h_2 = matrix_h[0:(math.floor(self.input_depth / 2)), 0:(self.input_depth + self.band_length - 2)]
+        matrix_h_0 = matrix_h[0:(math.floor(
+            self.input_height / 2)), 0:(self.input_height + self.band_length - 2)]
+        matrix_h_1 = matrix_h[0:(math.floor(
+            self.input_width / 2)), 0:(self.input_width + self.band_length - 2)]
+        matrix_h_2 = matrix_h[0:(math.floor(
+            self.input_depth / 2)), 0:(self.input_depth + self.band_length - 2)]
 
         index = 0
         for i in range(L1 - L):
             for j in range(self.band_length):
-                matrix_g[i, index+j] = self.band_high[j]
+                matrix_g[i, index + j] = self.band_high[j]
             index += 2
-        matrix_g_0 = matrix_g[0:(self.input_height - math.floor(self.input_height / 2)),0:(self.input_height + self.band_length - 2)]
-        matrix_g_1 = matrix_g[0:(self.input_width - math.floor(self.input_width / 2)),0:(self.input_width + self.band_length - 2)]
-        matrix_g_2 = matrix_g[0:(self.input_depth - math.floor(self.input_depth / 2)),0:(self.input_depth + self.band_length - 2)]
+        matrix_g_0 = matrix_g[0:(self.input_height - math.floor(
+            self.input_height / 2)), 0:(self.input_height + self.band_length - 2)]
+        matrix_g_1 = matrix_g[0:(self.input_width - math.floor(
+            self.input_width / 2)), 0:(self.input_width + self.band_length - 2)]
+        matrix_g_2 = matrix_g[0:(self.input_depth - math.floor(
+            self.input_depth / 2)), 0:(self.input_depth + self.band_length - 2)]
 
-        matrix_h_0 = matrix_h_0[:,(self.band_length_half-1):end]
-        matrix_h_1 = matrix_h_1[:,(self.band_length_half-1):end]
+        matrix_h_0 = matrix_h_0[:, (self.band_length_half - 1):end]
+        matrix_h_1 = matrix_h_1[:, (self.band_length_half - 1):end]
         matrix_h_1 = np.transpose(matrix_h_1)
-        matrix_h_2 = matrix_h_2[:,(self.band_length_half-1):end]
+        matrix_h_2 = matrix_h_2[:, (self.band_length_half - 1):end]
 
-        matrix_g_0 = matrix_g_0[:,(self.band_length_half-1):end]
-        matrix_g_1 = matrix_g_1[:,(self.band_length_half-1):end]
+        matrix_g_0 = matrix_g_0[:, (self.band_length_half - 1):end]
+        matrix_g_1 = matrix_g_1[:, (self.band_length_half - 1):end]
         matrix_g_1 = np.transpose(matrix_g_1)
-        matrix_g_2 = matrix_g_2[:,(self.band_length_half-1):end]
+        matrix_g_2 = matrix_g_2[:, (self.band_length_half - 1):end]
         if torch.cuda.is_available():
             self.matrix_low_0 = torch.Tensor(matrix_h_0).cuda()
             self.matrix_low_1 = torch.Tensor(matrix_h_1).cuda()
@@ -489,7 +529,7 @@ class DWT_3D(Module):
         self.input_width = input.size()[-1]
         self.get_matrix()
         return DWTFunction_3D.apply(input, self.matrix_low_0, self.matrix_low_1, self.matrix_low_2,
-                                           self.matrix_high_0, self.matrix_high_1, self.matrix_high_2)
+                                    self.matrix_high_0, self.matrix_high_1, self.matrix_high_2)
 
 
 class IDWT_3D(Module):
@@ -504,6 +544,7 @@ class IDWT_3D(Module):
             hfc_hhh -- (N, C, D/2, H/2, W/2)
     output: the original 3D data -- (N, C, D, H, W)
     """
+
     def __init__(self, wavename):
         """
         3D inverse DWT (IDWT) for 3D data reconstruction
@@ -528,37 +569,44 @@ class IDWT_3D(Module):
         """
         L1 = np.max((self.input_height, self.input_width))
         L = math.floor(L1 / 2)
-        matrix_h = np.zeros( ( L,      L1 + self.band_length - 2 ) )
-        matrix_g = np.zeros( ( L1 - L, L1 + self.band_length - 2 ) )
-        end = None if self.band_length_half == 1 else (-self.band_length_half+1)
+        matrix_h = np.zeros((L, L1 + self.band_length - 2))
+        matrix_g = np.zeros((L1 - L, L1 + self.band_length - 2))
+        end = None if self.band_length_half == 1 else (
+            - self.band_length_half + 1)
 
         index = 0
         for i in range(L):
             for j in range(self.band_length):
-                matrix_h[i, index+j] = self.band_low[j]
+                matrix_h[i, index + j] = self.band_low[j]
             index += 2
-        matrix_h_0 = matrix_h[0:(math.floor(self.input_height / 2)), 0:(self.input_height + self.band_length - 2)]
-        matrix_h_1 = matrix_h[0:(math.floor(self.input_width / 2)), 0:(self.input_width + self.band_length - 2)]
-        matrix_h_2 = matrix_h[0:(math.floor(self.input_depth / 2)), 0:(self.input_depth + self.band_length - 2)]
+        matrix_h_0 = matrix_h[0:(math.floor(
+            self.input_height / 2)), 0:(self.input_height + self.band_length - 2)]
+        matrix_h_1 = matrix_h[0:(math.floor(
+            self.input_width / 2)), 0:(self.input_width + self.band_length - 2)]
+        matrix_h_2 = matrix_h[0:(math.floor(
+            self.input_depth / 2)), 0:(self.input_depth + self.band_length - 2)]
 
         index = 0
         for i in range(L1 - L):
             for j in range(self.band_length):
-                matrix_g[i, index+j] = self.band_high[j]
+                matrix_g[i, index + j] = self.band_high[j]
             index += 2
-        matrix_g_0 = matrix_g[0:(self.input_height - math.floor(self.input_height / 2)),0:(self.input_height + self.band_length - 2)]
-        matrix_g_1 = matrix_g[0:(self.input_width - math.floor(self.input_width / 2)),0:(self.input_width + self.band_length - 2)]
-        matrix_g_2 = matrix_g[0:(self.input_depth - math.floor(self.input_depth / 2)),0:(self.input_depth + self.band_length - 2)]
+        matrix_g_0 = matrix_g[0:(self.input_height - math.floor(
+            self.input_height / 2)), 0:(self.input_height + self.band_length - 2)]
+        matrix_g_1 = matrix_g[0:(self.input_width - math.floor(
+            self.input_width / 2)), 0:(self.input_width + self.band_length - 2)]
+        matrix_g_2 = matrix_g[0:(self.input_depth - math.floor(
+            self.input_depth / 2)), 0:(self.input_depth + self.band_length - 2)]
 
-        matrix_h_0 = matrix_h_0[:,(self.band_length_half-1):end]
-        matrix_h_1 = matrix_h_1[:,(self.band_length_half-1):end]
+        matrix_h_0 = matrix_h_0[:, (self.band_length_half - 1):end]
+        matrix_h_1 = matrix_h_1[:, (self.band_length_half - 1):end]
         matrix_h_1 = np.transpose(matrix_h_1)
-        matrix_h_2 = matrix_h_2[:,(self.band_length_half-1):end]
+        matrix_h_2 = matrix_h_2[:, (self.band_length_half - 1):end]
 
-        matrix_g_0 = matrix_g_0[:,(self.band_length_half-1):end]
-        matrix_g_1 = matrix_g_1[:,(self.band_length_half-1):end]
+        matrix_g_0 = matrix_g_0[:, (self.band_length_half - 1):end]
+        matrix_g_1 = matrix_g_1[:, (self.band_length_half - 1):end]
         matrix_g_1 = np.transpose(matrix_g_1)
-        matrix_g_2 = matrix_g_2[:,(self.band_length_half-1):end]
+        matrix_g_2 = matrix_g_2[:, (self.band_length_half - 1):end]
         if torch.cuda.is_available():
             self.matrix_low_0 = torch.Tensor(matrix_h_0).cuda()
             self.matrix_low_1 = torch.Tensor(matrix_h_1).cuda()
@@ -586,8 +634,10 @@ class IDWT_3D(Module):
         :param HHH: the high-frequency componetn, hfc_hhh
         :return: the original 3D input data
         """
-        assert len(LLL.size()) == len(LLH.size()) == len(LHL.size()) == len(LHH.size()) == 5
-        assert len(HLL.size()) == len(HLH.size()) == len(HHL.size()) == len(HHH.size()) == 5
+        assert len(LLL.size()) == len(LLH.size()) == len(
+            LHL.size()) == len(LHH.size()) == 5
+        assert len(HLL.size()) == len(HLH.size()) == len(
+            HHL.size()) == len(HHH.size()) == 5
         self.input_depth = LLL.size()[-3] + HHH.size()[-3]
         self.input_height = LLL.size()[-2] + HHH.size()[-2]
         self.input_width = LLL.size()[-1] + HHH.size()[-1]
@@ -598,22 +648,20 @@ class IDWT_3D(Module):
 
 
 if __name__ == '__main__':
-	dwt = DWT_2D("haar")
-	iwt = IDWT_2D("haar")
-	x = torch.randn(3, 3, 24, 24).cuda()
-	xll = x
-	wavelet_list = []
-	for i in range(3):
-		xll, xlh, xhl, xhh = dwt(xll)
-		wavelet_list.append([xll, xlh, xhl, xhh])
+    dwt = DWT_2D("haar")
+    iwt = IDWT_2D("haar")
+    x = torch.randn(3, 3, 24, 24).cuda()
+    xll = x
+    wavelet_list = []
+    for i in range(3):
+        xll, xlh, xhl, xhh = dwt(xll)
+        wavelet_list.append([xll, xlh, xhl, xhh])
 
-	# xll = wavelet_list[-1] * torch.randn(xll.shape)
-	for i in range(2)[::-1]:
-		xll, xlh, xhl, xhh = wavelet_list[i]
-		xll = iwt(xll, xlh, xhl, xhh)
-		print(xll.shape)
+    # xll = wavelet_list[-1] * torch.randn(xll.shape)
+    for i in range(2)[::-1]:
+        xll, xlh, xhl, xhh = wavelet_list[i]
+        xll = iwt(xll, xlh, xhl, xhh)
+        print(xll.shape)
 
-	print(torch.sum(x - xll))
-	print(torch.sum(x - iwt(*wavelet_list[0])))
-
-	
+    print(torch.sum(x - xll))
+    print(torch.sum(x - iwt(*wavelet_list[0])))

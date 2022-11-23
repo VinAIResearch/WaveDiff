@@ -13,11 +13,10 @@
 
 
 import math
+
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.nn.init import _calculate_fan_in_and_fan_out
-import numpy as np
 
 
 def _calculate_correct_fan(tensor, mode):
@@ -70,6 +69,7 @@ def dense(in_channels, out_channels, init_scale=1.):
     nn.init.zeros_(lin.bias)
     return lin
 
+
 def conv2d(in_planes, out_planes, kernel_size=(3, 3), stride=1, dilation=1, padding=1, bias=True, padding_mode='zeros',
            init_scale=1.):
     conv = nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation,
@@ -78,6 +78,3 @@ def conv2d(in_planes, out_planes, kernel_size=(3, 3), stride=1, dilation=1, padd
     if bias:
         nn.init.zeros_(conv.bias)
     return conv
-
-
-    

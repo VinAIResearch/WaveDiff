@@ -31,13 +31,15 @@
 ''' Codes adapted from https://github.com/yang-song/score_sde_pytorch/blob/main/models/ncsnpp.py
 '''
 
-from . import utils, layers, layerspp, dense_layer
-import torch.nn as nn
 import functools
-import torch
+
 import numpy as np
-from einops import rearrange
+import torch
+import torch.nn as nn
 from DWT_IDWT.DWT_IDWT_layer import DWT_2D, IDWT_2D
+from einops import rearrange
+
+from . import dense_layer, layers, layerspp, utils
 
 
 ResnetBlockDDPM = layerspp.ResnetBlockDDPMpp_Adagn
@@ -52,6 +54,7 @@ conv1x1 = layerspp.conv1x1
 get_act = layers.get_act
 default_initializer = layers.default_init
 dense = dense_layer.dense
+
 
 class PixelNorm(nn.Module):
     def __init__(self):
@@ -74,7 +77,7 @@ class NCSNpp(nn.Module):
 
         self.patch_size = config.patch_size
         assert config.image_size % self.patch_size == 0
-        
+
         self.nf = nf = config.num_channels_dae
         ch_mult = config.ch_mult
         self.num_res_blocks = num_res_blocks = config.num_res_blocks
@@ -82,7 +85,8 @@ class NCSNpp(nn.Module):
         dropout = config.dropout
         resamp_with_conv = config.resamp_with_conv
         self.num_resolutions = num_resolutions = len(ch_mult)
-        self.all_resolutions = all_resolutions = [(config.image_size // self.patch_size) // (2 ** i) for i in range(num_resolutions)]
+        self.all_resolutions = all_resolutions = [
+            (config.image_size // self.patch_size) // (2 ** i) for i in range(num_resolutions)]
 
         self.conditional = conditional = config.conditional  # noise-conditional
         fir = config.fir
@@ -103,7 +107,7 @@ class NCSNpp(nn.Module):
         # timestep/noise_level embedding; only for continuous training
         if embedding_type == 'fourier':
             # Gaussian Fourier features embeddings.
-            #assert config.training.continuous, "Fourier features are only used for continuous training."
+            # assert config.training.continuous, "Fourier features are only used for continuous training."
 
             modules.append(layerspp.GaussianFourierProjection(
                 embedding_size=nf, scale=config.fourier_scale
@@ -125,26 +129,28 @@ class NCSNpp(nn.Module):
             nn.init.zeros_(modules[-1].bias)
 
         AttnBlock = functools.partial(layerspp.AttnBlockpp,
-                                    init_scale=init_scale,
-                                    skip_rescale=skip_rescale)
+                                      init_scale=init_scale,
+                                      skip_rescale=skip_rescale)
 
         Upsample = functools.partial(layerspp.Upsample,
-                                    with_conv=resamp_with_conv, fir=fir, fir_kernel=fir_kernel)
+                                     with_conv=resamp_with_conv, fir=fir, fir_kernel=fir_kernel)
 
         if progressive == 'output_skip':
-            self.pyramid_upsample = layerspp.Upsample(fir=fir, fir_kernel=fir_kernel, with_conv=False)
+            self.pyramid_upsample = layerspp.Upsample(
+                fir=fir, fir_kernel=fir_kernel, with_conv=False)
         elif progressive == 'residual':
             pyramid_upsample = functools.partial(layerspp.Upsample,
-                                                fir=fir, fir_kernel=fir_kernel, with_conv=True)
+                                                 fir=fir, fir_kernel=fir_kernel, with_conv=True)
 
         Downsample = functools.partial(layerspp.Downsample,
-                                    with_conv=resamp_with_conv, fir=fir, fir_kernel=fir_kernel)
+                                       with_conv=resamp_with_conv, fir=fir, fir_kernel=fir_kernel)
 
         if progressive_input == 'input_skip':
-            self.pyramid_downsample = layerspp.Downsample(fir=fir, fir_kernel=fir_kernel, with_conv=False)
+            self.pyramid_downsample = layerspp.Downsample(
+                fir=fir, fir_kernel=fir_kernel, with_conv=False)
         elif progressive_input == 'residual':
             pyramid_downsample = functools.partial(layerspp.Downsample,
-                                                     fir=fir, fir_kernel=fir_kernel, with_conv=True)
+                                                   fir=fir, fir_kernel=fir_kernel, with_conv=True)
 
         if resblock_type == 'ddpm':
             ResnetBlock = functools.partial(ResnetBlockDDPM,
@@ -153,7 +159,7 @@ class NCSNpp(nn.Module):
                                             init_scale=init_scale,
                                             skip_rescale=skip_rescale,
                                             temb_dim=nf * 4,
-                                            zemb_dim = z_emb_dim)
+                                            zemb_dim=z_emb_dim)
 
         elif resblock_type == 'biggan':
             ResnetBlock = functools.partial(ResnetBlockBigGAN,
@@ -164,7 +170,7 @@ class NCSNpp(nn.Module):
                                             init_scale=init_scale,
                                             skip_rescale=skip_rescale,
                                             temb_dim=nf * 4,
-                                            zemb_dim = z_emb_dim)
+                                            zemb_dim=z_emb_dim)
         elif resblock_type == 'biggan_oneadagn':
             ResnetBlock = functools.partial(ResnetBlockBigGAN_one,
                                             act=act,
@@ -174,7 +180,7 @@ class NCSNpp(nn.Module):
                                             init_scale=init_scale,
                                             skip_rescale=skip_rescale,
                                             temb_dim=nf * 4,
-                                            zemb_dim = z_emb_dim)
+                                            zemb_dim=z_emb_dim)
 
         else:
             raise ValueError(f'resblock type {resblock_type} unrecognized.')
@@ -212,7 +218,8 @@ class NCSNpp(nn.Module):
                         in_ch *= 2
 
                 elif progressive_input == 'residual':
-                    modules.append(pyramid_downsample(in_ch=input_pyramid_ch, out_ch=in_ch))
+                    modules.append(pyramid_downsample(
+                        in_ch=input_pyramid_ch, out_ch=in_ch))
                     input_pyramid_ch = in_ch
 
                 hs_c.append(in_ch)
@@ -228,7 +235,7 @@ class NCSNpp(nn.Module):
             for i_block in range(num_res_blocks + 1):
                 out_ch = nf * ch_mult[i_level]
                 modules.append(ResnetBlock(in_ch=in_ch + hs_c.pop(),
-                                        out_ch=out_ch))
+                                           out_ch=out_ch))
                 in_ch = out_ch
 
             if all_resolutions[i_level] in attn_resolutions:
@@ -239,7 +246,8 @@ class NCSNpp(nn.Module):
                     if progressive == 'output_skip':
                         modules.append(nn.GroupNorm(num_groups=min(in_ch // 4, 32),
                                                     num_channels=in_ch, eps=1e-6))
-                        modules.append(conv3x3(in_ch, channels, init_scale=init_scale))
+                        modules.append(
+                            conv3x3(in_ch, channels, init_scale=init_scale))
                         pyramid_ch = channels
                     elif progressive == 'residual':
                         modules.append(nn.GroupNorm(num_groups=min(in_ch // 4, 32),
@@ -252,10 +260,12 @@ class NCSNpp(nn.Module):
                     if progressive == 'output_skip':
                         modules.append(nn.GroupNorm(num_groups=min(in_ch // 4, 32),
                                                     num_channels=in_ch, eps=1e-6))
-                        modules.append(conv3x3(in_ch, channels, bias=True, init_scale=init_scale))
+                        modules.append(
+                            conv3x3(in_ch, channels, bias=True, init_scale=init_scale))
                         pyramid_ch = channels
                     elif progressive == 'residual':
-                        modules.append(pyramid_upsample(in_ch=pyramid_ch, out_ch=in_ch))
+                        modules.append(pyramid_upsample(
+                            in_ch=pyramid_ch, out_ch=in_ch))
                         pyramid_ch = in_ch
                     else:
                         raise ValueError(f'{progressive} is not a valid name')
@@ -275,19 +285,19 @@ class NCSNpp(nn.Module):
             modules.append(conv3x3(in_ch, channels, init_scale=init_scale))
 
         self.all_modules = nn.ModuleList(modules)
-        
-        
+
         mapping_layers = [PixelNorm(),
-                        dense(config.nz, z_emb_dim),
-                        self.act,]
+                          dense(config.nz, z_emb_dim),
+                          self.act, ]
         for _ in range(config.n_mlp):
             mapping_layers.append(dense(z_emb_dim, z_emb_dim))
             mapping_layers.append(self.act)
         self.z_transform = nn.Sequential(*mapping_layers)
-        
+
     def forward(self, x, time_cond, z):
         # patchify
-        x = rearrange(x, "n c (h p1) (w p2) -> n (p1 p2 c) h w", p1=self.patch_size, p2=self.patch_size)
+        x = rearrange(x, "n c (h p1) (w p2) -> n (p1 p2 c) h w",
+                      p1=self.patch_size, p2=self.patch_size)
         # timestep/noise_level embedding; only for continuous training
         zemb = self.z_transform(z)
         modules = self.all_modules
@@ -301,7 +311,7 @@ class NCSNpp(nn.Module):
         elif self.embedding_type == 'positional':
             # Sinusoidal positional embeddings.
             timesteps = time_cond
-            
+
             temb = layers.get_timestep_embedding(timesteps, self.nf)
 
         else:
@@ -369,7 +379,6 @@ class NCSNpp(nn.Module):
         h = modules[m_idx](h, temb, zemb)
         m_idx += 1
 
-
         pyramid = None
 
         # Upsampling block
@@ -395,7 +404,8 @@ class NCSNpp(nn.Module):
                         pyramid = modules[m_idx](pyramid)
                         m_idx += 1
                     else:
-                        raise ValueError(f'{self.progressive} is not a valid name.')
+                        raise ValueError(
+                            f'{self.progressive} is not a valid name.')
                 else:
                     if self.progressive == 'output_skip':
                         pyramid = self.pyramid_upsample(pyramid)
@@ -413,7 +423,8 @@ class NCSNpp(nn.Module):
                             pyramid = pyramid + h
                         h = pyramid
                     else:
-                        raise ValueError(f'{self.progressive} is not a valid name')
+                        raise ValueError(
+                            f'{self.progressive} is not a valid name')
 
             if i_level != 0:
                 if self.resblock_type == 'ddpm':
@@ -435,12 +446,13 @@ class NCSNpp(nn.Module):
 
         assert m_idx == len(modules)
         # unpatchify
-        h = rearrange(h, "n (c p1 p2) h w -> n c (h p1) (w p2)", p1=self.patch_size, p2=self.patch_size)
+        h = rearrange(h, "n (c p1 p2) h w -> n c (h p1) (w p2)",
+                      p1=self.patch_size, p2=self.patch_size)
 
         if not self.not_use_tanh:
-           return torch.tanh(h)
+            return torch.tanh(h)
         else:
-           return h
+            return h
 
 
 @utils.register_model(name='wavelet_ncsnpp')
@@ -456,7 +468,7 @@ class WaveletNCSNpp(NCSNpp):
 
         self.patch_size = config.patch_size
         assert config.image_size % self.patch_size == 0
-        
+
         self.nf = nf = config.num_channels_dae
         ch_mult = config.ch_mult
         self.num_res_blocks = num_res_blocks = config.num_res_blocks
@@ -464,7 +476,8 @@ class WaveletNCSNpp(NCSNpp):
         dropout = config.dropout
         resamp_with_conv = config.resamp_with_conv
         self.num_resolutions = num_resolutions = len(ch_mult)
-        self.all_resolutions = all_resolutions = [(config.image_size // self.patch_size) // (2 ** i) for i in range(num_resolutions)]
+        self.all_resolutions = all_resolutions = [
+            (config.image_size // self.patch_size) // (2 ** i) for i in range(num_resolutions)]
 
         self.conditional = conditional = config.conditional  # noise-conditional
         fir = config.fir
@@ -489,7 +502,7 @@ class WaveletNCSNpp(NCSNpp):
         # timestep/noise_level embedding; only for continuous training
         if embedding_type == 'fourier':
             # Gaussian Fourier features embeddings.
-            #assert config.training.continuous, "Fourier features are only used for continuous training."
+            # assert config.training.continuous, "Fourier features are only used for continuous training."
 
             modules.append(layerspp.GaussianFourierProjection(
                 embedding_size=nf, scale=config.fourier_scale
@@ -511,29 +524,32 @@ class WaveletNCSNpp(NCSNpp):
             nn.init.zeros_(modules[-1].bias)
 
         AttnBlock = functools.partial(layerspp.AttnBlockpp,
-                                    init_scale=init_scale,
-                                    skip_rescale=skip_rescale)
+                                      init_scale=init_scale,
+                                      skip_rescale=skip_rescale)
 
         Upsample = functools.partial(layerspp.Upsample,
-                                    with_conv=resamp_with_conv, fir=fir, fir_kernel=fir_kernel)
+                                     with_conv=resamp_with_conv, fir=fir, fir_kernel=fir_kernel)
 
         if progressive == 'output_skip':
-            self.pyramid_upsample = layerspp.Upsample(fir=fir, fir_kernel=fir_kernel, with_conv=False)
+            self.pyramid_upsample = layerspp.Upsample(
+                fir=fir, fir_kernel=fir_kernel, with_conv=False)
         elif progressive == 'residual':
             pyramid_upsample = functools.partial(layerspp.Upsample,
-                                                fir=fir, fir_kernel=fir_kernel, with_conv=True)
+                                                 fir=fir, fir_kernel=fir_kernel, with_conv=True)
 
         Downsample = functools.partial(layerspp.Downsample,
-                                    with_conv=resamp_with_conv, fir=fir, fir_kernel=fir_kernel)
+                                       with_conv=resamp_with_conv, fir=fir, fir_kernel=fir_kernel)
 
         if progressive_input == 'input_skip':
-            self.pyramid_downsample = layerspp.Downsample(fir=fir, fir_kernel=fir_kernel, with_conv=False)
+            self.pyramid_downsample = layerspp.Downsample(
+                fir=fir, fir_kernel=fir_kernel, with_conv=False)
         elif progressive_input == 'residual':
             if self.no_use_residual:
                 pyramid_downsample = functools.partial(layerspp.Downsample,
                                                        fir=fir, fir_kernel=fir_kernel, with_conv=True)
             else:
-                pyramid_downsample = functools.partial(layerspp.WaveletDownsample)
+                pyramid_downsample = functools.partial(
+                    layerspp.WaveletDownsample)
 
         if resblock_type == 'ddpm':
             ResnetBlock = functools.partial(ResnetBlockDDPM,
@@ -542,7 +558,7 @@ class WaveletNCSNpp(NCSNpp):
                                             init_scale=init_scale,
                                             skip_rescale=skip_rescale,
                                             temb_dim=nf * 4,
-                                            zemb_dim = z_emb_dim)
+                                            zemb_dim=z_emb_dim)
 
         elif resblock_type == 'biggan':
             if self.no_use_freq:
@@ -554,7 +570,7 @@ class WaveletNCSNpp(NCSNpp):
                                                 init_scale=init_scale,
                                                 skip_rescale=skip_rescale,
                                                 temb_dim=nf * 4,
-                                                zemb_dim = z_emb_dim)
+                                                zemb_dim=z_emb_dim)
             else:
                 ResnetBlock = functools.partial(WaveletResnetBlockBigGAN,
                                                 act=act,
@@ -562,7 +578,7 @@ class WaveletNCSNpp(NCSNpp):
                                                 init_scale=init_scale,
                                                 skip_rescale=skip_rescale,
                                                 temb_dim=nf * 4,
-                                                zemb_dim = z_emb_dim)
+                                                zemb_dim=z_emb_dim)
 
         elif resblock_type == 'biggan_oneadagn':
             ResnetBlock = functools.partial(ResnetBlockBigGAN_one,
@@ -573,7 +589,7 @@ class WaveletNCSNpp(NCSNpp):
                                             init_scale=init_scale,
                                             skip_rescale=skip_rescale,
                                             temb_dim=nf * 4,
-                                            zemb_dim = z_emb_dim)
+                                            zemb_dim=z_emb_dim)
 
         else:
             raise ValueError(f'resblock type {resblock_type} unrecognized.')
@@ -600,7 +616,6 @@ class WaveletNCSNpp(NCSNpp):
                     modules.append(AttnBlock(channels=in_ch))
                 hs_c.append(in_ch)
 
-
             if i_level != num_resolutions - 1:
                 hs_c2.append(in_ch)
                 if resblock_type == 'ddpm':
@@ -614,7 +629,8 @@ class WaveletNCSNpp(NCSNpp):
                         in_ch *= 2
 
                 elif progressive_input == 'residual':
-                    modules.append(pyramid_downsample(in_ch=input_pyramid_ch, out_ch=in_ch))
+                    modules.append(pyramid_downsample(
+                        in_ch=input_pyramid_ch, out_ch=in_ch))
                     input_pyramid_ch = in_ch
 
                 hs_c.append(in_ch)
@@ -624,14 +640,13 @@ class WaveletNCSNpp(NCSNpp):
         modules.append(AttnBlock(channels=in_ch))
         modules.append(ResnetBlock(in_ch=in_ch))
 
-
         pyramid_ch = 0
         # Upsampling block
         for i_level in reversed(range(num_resolutions)):
             for i_block in range(num_res_blocks + 1):
                 out_ch = nf * ch_mult[i_level]
                 modules.append(ResnetBlock(in_ch=in_ch + hs_c.pop(),
-                                        out_ch=out_ch))
+                                           out_ch=out_ch))
                 in_ch = out_ch
 
             if all_resolutions[i_level] in attn_resolutions:
@@ -642,7 +657,8 @@ class WaveletNCSNpp(NCSNpp):
                     if progressive == 'output_skip':
                         modules.append(nn.GroupNorm(num_groups=min(in_ch // 4, 32),
                                                     num_channels=in_ch, eps=1e-6))
-                        modules.append(conv3x3(in_ch, channels, init_scale=init_scale))
+                        modules.append(
+                            conv3x3(in_ch, channels, init_scale=init_scale))
                         pyramid_ch = channels
                     elif progressive == 'residual':
                         modules.append(nn.GroupNorm(num_groups=min(in_ch // 4, 32),
@@ -655,10 +671,12 @@ class WaveletNCSNpp(NCSNpp):
                     if progressive == 'output_skip':
                         modules.append(nn.GroupNorm(num_groups=min(in_ch // 4, 32),
                                                     num_channels=in_ch, eps=1e-6))
-                        modules.append(conv3x3(in_ch, channels, bias=True, init_scale=init_scale))
+                        modules.append(
+                            conv3x3(in_ch, channels, bias=True, init_scale=init_scale))
                         pyramid_ch = channels
                     elif progressive == 'residual':
-                        modules.append(pyramid_upsample(in_ch=pyramid_ch, out_ch=in_ch))
+                        modules.append(pyramid_upsample(
+                            in_ch=pyramid_ch, out_ch=in_ch))
                         pyramid_ch = in_ch
                     else:
                         raise ValueError(f'{progressive} is not a valid name')
@@ -670,7 +688,8 @@ class WaveletNCSNpp(NCSNpp):
                     if self.no_use_freq:
                         modules.append(ResnetBlock(in_ch=in_ch, up=True))
                     else:
-                        modules.append(ResnetBlock(in_ch=in_ch, up=True, hi_in_ch=hs_c2.pop()))
+                        modules.append(ResnetBlock(
+                            in_ch=in_ch, up=True, hi_in_ch=hs_c2.pop()))
 
         assert not hs_c
 
@@ -681,23 +700,22 @@ class WaveletNCSNpp(NCSNpp):
             modules.append(conv3x3(in_ch, channels, init_scale=init_scale))
 
         self.all_modules = nn.ModuleList(modules)
-        
-        
+
         mapping_layers = [PixelNorm(),
-                        dense(config.nz, z_emb_dim),
-                        self.act,]
+                          dense(config.nz, z_emb_dim),
+                          self.act, ]
         for _ in range(config.n_mlp):
             mapping_layers.append(dense(z_emb_dim, z_emb_dim))
             mapping_layers.append(self.act)
         self.z_transform = nn.Sequential(*mapping_layers)
-        
+
         self.dwt = DWT_2D("haar")
         self.iwt = IDWT_2D("haar")
 
-
     def forward(self, x, time_cond, z):
         # patchify
-        x = rearrange(x, "n c (h p1) (w p2) -> n (p1 p2 c) h w", p1=self.patch_size, p2=self.patch_size)
+        x = rearrange(x, "n c (h p1) (w p2) -> n (p1 p2 c) h w",
+                      p1=self.patch_size, p2=self.patch_size)
         # timestep/noise_level embedding; only for continuous training
         zemb = self.z_transform(z)
         modules = self.all_modules
@@ -711,7 +729,7 @@ class WaveletNCSNpp(NCSNpp):
         elif self.embedding_type == 'positional':
             # Sinusoidal positional embeddings.
             timesteps = time_cond
-            
+
             temb = layers.get_timestep_embedding(timesteps, self.nf)
 
         else:
@@ -776,30 +794,29 @@ class WaveletNCSNpp(NCSNpp):
 
                 hs.append(h)
 
-
         h = hs[-1]
 
         if self.no_use_fbn:
             h = modules[m_idx](h, temb, zemb)
         else:
             h, hlh, hhl, hhh = self.dwt(h)
-            h = modules[m_idx](h/2., temb, zemb)
-            h = self.iwt(h*2., hlh, hhl, hhh)
+            h = modules[m_idx](h / 2., temb, zemb)
+            h = self.iwt(h * 2., hlh, hhl, hhh)
         m_idx += 1
 
-        # attn block        
+        # attn block
         h = modules[m_idx](h)
         m_idx += 1
 
         if self.no_use_fbn:
             h = modules[m_idx](h, temb, zemb)
         else:
-            h = modules[m_idx](h, temb, zemb) # forward on original feature space
+            # forward on original feature space
+            h = modules[m_idx](h, temb, zemb)
             h, hlh, hhl, hhh = self.dwt(h)
-            h = modules[m_idx](h/2., temb, zemb) # forward on wavelet space
-            h = self.iwt(h*2., hlh, hhl, hhh)
+            h = modules[m_idx](h / 2., temb, zemb)  # forward on wavelet space
+            h = self.iwt(h * 2., hlh, hhl, hhh)
         m_idx += 1
-
 
         pyramid = None
 
@@ -827,7 +844,8 @@ class WaveletNCSNpp(NCSNpp):
                         pyramid = modules[m_idx](pyramid)
                         m_idx += 1
                     else:
-                        raise ValueError(f'{self.progressive} is not a valid name.')
+                        raise ValueError(
+                            f'{self.progressive} is not a valid name.')
                 else:
                     if self.progressive == 'output_skip':
                         pyramid = self.pyramid_upsample(pyramid)
@@ -845,7 +863,8 @@ class WaveletNCSNpp(NCSNpp):
                             pyramid = pyramid + h
                         h = pyramid
                     else:
-                        raise ValueError(f'{self.progressive} is not a valid name')
+                        raise ValueError(
+                            f'{self.progressive} is not a valid name')
 
             if i_level != 0:
                 if self.resblock_type == 'ddpm':
@@ -871,10 +890,10 @@ class WaveletNCSNpp(NCSNpp):
 
         assert m_idx == len(modules)
         # unpatchify
-        h = rearrange(h, "n (c p1 p2) h w -> n c (h p1) (w p2)", p1=self.patch_size, p2=self.patch_size)
+        h = rearrange(h, "n (c p1 p2) h w -> n c (h p1) (w p2)",
+                      p1=self.patch_size, p2=self.patch_size)
 
         if not self.not_use_tanh:
-           return torch.tanh(h)
+            return torch.tanh(h)
         else:
-           return h
-        
+            return h
