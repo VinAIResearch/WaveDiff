@@ -27,9 +27,15 @@ Details of the model architecture and experimental results can be found in [our 
  **Please CITE** our paper whenever this repository is used to help produce published results or incorporated into other software.
 
 ## Installation ##
-Latest Pytorch version is required. 
+Python `3.7.13` and Pytorch `1.10.0` are used in this implementation.
 
-Install neccessary libraries:
+It is recommended to create `conda` env from our provided [environment.yml](./environment.yml)
+```
+conda env create -f environment.yml
+conda activate wavediff
+```
+
+Or you can install neccessary libraries as follows:
 ```bash
 pip install -r requirements.txt
 ```
