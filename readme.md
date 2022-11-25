@@ -29,7 +29,7 @@ Details of the model architecture and experimental results can be found in [our 
 ## Installation ##
 Python `3.7.13` and Pytorch `1.10.0` are used in this implementation.
 
-It is recommended to create `conda` env from our provided [environment.yml](./environment.yml)
+It is recommended to create `conda` env from our provided [environment.yml](./environment.yml):
 ```
 conda env create -f environment.yml
 conda activate wavediff
