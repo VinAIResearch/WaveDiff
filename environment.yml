@@ -1,4 +1,4 @@
-name: /lustre/scratch/client/vinai/users/quandm7/env
+name: wavediff
 channels:
   - pytorch
   - conda-forge
@@ -163,4 +163,4 @@ dependencies:
     - werkzeug==2.2.2
     - yacs==0.1.8
     - zipp==3.8.1
-prefix: /lustre/scratch/client/vinai/users/quandm7/env
+prefix: ./envs/wavediff
