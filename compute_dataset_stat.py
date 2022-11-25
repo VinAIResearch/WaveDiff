@@ -66,6 +66,6 @@ if __name__ == "__main__":
         f = np.load(save_path, allow_pickle=True)
         try:
             m, s = f['mu'][:], f['sigma'][:]
-        except KeyError:
+        except IndexError:
             m, s = f.item()['mu'][:], f.item()['sigma'][:]
         print(m.shape, s.shape)
