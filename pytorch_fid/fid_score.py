@@ -262,7 +262,7 @@ def compute_statistics_of_path(path, model, batch_size, dims, device, resize=0):
         f = np.load(path, allow_pickle=True)
         try:
             m, s = f['mu'][:], f['sigma'][:]
-        except KeyError:
+        except IndexError:
             m, s = f.item()['mu'][:], f.item()['sigma'][:]
     else:
         path = pathlib.Path(path)

@@ -94,7 +94,6 @@ class Discriminator_small(nn.Module):
         self.patch_size = patch_size
         self.use_local_loss = use_local_loss
         nc = nc * self.patch_size * self.patch_size
-        print(nc, self.patch_size)
         # Gaussian random feature embedding layer for time
         self.act = act
 
