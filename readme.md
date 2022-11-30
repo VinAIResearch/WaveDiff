@@ -17,10 +17,11 @@ WaveDiff is a novel wavelet-based diffusion structure that employs low-and-high 
 
 Details of the model architecture and experimental results can be found in [our following paper](https://arxiv.org/abs/2211.16152):
 ```bibtex
-@article{hao2022wavelet,
+@article{WaveDiff,
   title={Wavelet Diffusion Models are fast and scalable Image Generators},
   author={Hao Phung and Quan Dao and Anh Tran},
-  journal={arXiv preprint arXiv:2211.16152},
+  journal={arXiv preprint},
+  volume={arXiv:2211.16152},
   year={2022}
 }
 ```
