@@ -15,12 +15,12 @@
 WaveDiff is a novel wavelet-based diffusion structure that employs low-and-high frequency components of wavelet subbands from both image and feature levels. These are adaptively implemented to accelerate the sampling process while maintaining good generation quality. Experimental results on CelebA-HQ, CIFAR-10, LSUN-Church, and STL-10 datasets show that WaveDiff provides state-of-the-art training and inference speed, which serves as a stepping-stone to offering real-time and high-fidelity diffusion models.
 
 
-Details of the model architecture and experimental results can be found in [our following paper]():
+Details of the model architecture and experimental results can be found in [our following paper](https://arxiv.org/abs/2211.16152):
 ```bibtex
 @article{hao2022wavelet,
   title={Wavelet Diffusion Models are fast and scalable Image Generators},
   author={Hao Phung and Quan Dao and Anh Tran},
-  journal={arXiv preprint arXiv:<submit_number>},
+  journal={arXiv preprint arXiv:2211.16152},
   year={2022}
 }
 ```
