@@ -61,32 +61,32 @@ else
 		python test_ddgan.py --dataset cifar10 --exp ddgan_cifar10_exp1 --num_channels 3 --num_channels_dae 128 --num_timesteps 4 \
 			--num_res_blocks 2 --nz 100 --z_emb_dim 256 --n_mlp 4 --ch_mult 1 2 2 2 --epoch_id 1200 \
 			--compute_fid --real_img_dir pytorch_fid/cifar10_train_stat.npy \
-			# --batch_size 100 --measure_time \
+			# --measure_time \
 
 	elif [[ $DATASET == stl10 ]]; then
 		python test_ddgan.py --dataset stl10 --image_size 64 --exp ddgan_stl10_exp1 --num_channels 3 --num_channels_dae 128 --num_timesteps 4 \
 			--num_res_blocks 2 --nz 100 --z_emb_dim 256 --n_mlp 4 --ch_mult 1 2 2 2 --epoch_id 900 \
 			# --compute_fid --real_img_dir pytorch_fid/stl10_stat.npy \
-			# --batch_size 100 --measure_time \
+			# --measure_time \
 
 	elif [[ $DATASET == celeba_256 ]]; then
 		python test_ddgan.py --dataset celeba_256 --image_size 256 --exp ddgan_celebahq_exp1 --num_channels 3 --num_channels_dae 64 \
 			--ch_mult 1 1 2 2 4 4 --num_timesteps 2 --num_res_blocks 2  --epoch_id 550 \
 			# --compute_fid --real_img_dir pytorch_fid/celebahq_stat.npy
-			# --batch_size 100 --measure_time \
+			# --measure_time \
 
 	elif [[ $DATASET == celeba_512 ]]; then
 		python test_ddgan.py --dataset celeba_512 --image_size 512 --exp ddgan_celebahq_512_exp1 --num_channels 3 --num_channels_dae 64 \
 			--ch_mult 1 1 2 2 4 4 --num_timesteps 2 --num_res_blocks 2  --epoch_id 325 \
 			--batch_size 100 \
 			# --compute_fid --real_img_dir ./pytorch_fid/celebahq_512_stat.npy \
-			# --measure_time \
+			# --measure_time --batch_size 25 \
 
 	elif [[ $DATASET == lsun ]]; then
 		python test_ddgan.py --dataset lsun --image_size 256 --exp ddgan_lsun_exp1 --num_channels 3 --num_channels_dae 64 \
 			--ch_mult 1 1 2 2 4 4  --num_timesteps 4 --num_res_blocks 2  --epoch_id 500 \
 			# --compute_fid --real_img_dir pytorch_fid/lsun_church_stat.npy \
-			# --batch_size 100 --measure_time \
+			# --measure_time \
 
 	fi
 fi

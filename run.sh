@@ -56,8 +56,19 @@ if [[ $MODE == train ]]; then
 			--z_emb_dim 256 --lr_d 1e-4 --lr_g 2e-4 --lazy_reg 10 --save_content --datadir data/celeba_512/celeba-lmdb-512/ \
 			--master_port $MASTER_PORT --num_process_per_node $GPUS \
 			--current_resolution 256 --attn_resolution 16 --num_disc_layers 6 --rec_loss \
+			--save_content_every 10 \
 			--net_type wavelet \
 			--use_pytorch_wavelet \
+
+	elif [[ $DATASET == celeba_1024 ]]; then
+		python train_wddgan.py --dataset celeba_1024 --image_size 1024 --exp wddgan_celebahq1024_exp1_wg112244_d6_recloss_400ep --num_channels 12 --num_channels_dae 64 --ch_mult 1 1 2 2 4 4 --num_timesteps 2 --patch_size 2 \
+			--num_res_blocks 2 --batch_size 4 --num_epoch 400 --ngf 64 --embedding_type positional --use_ema --r1_gamma 2. \
+			--z_emb_dim 256 --lr_d 1e-4 --lr_g 2e-4 --lazy_reg 10 --save_content --datadir data/celeba_1024/celeba-lmdb-1024/ \
+			--master_port $MASTER_PORT --num_process_per_node $GPUS \
+			--current_resolution 512 --attn_resolution 0 --num_disc_layers 6 --rec_loss \
+			--save_content_every 10 \
+			--net_type wavelet \
+			# --use_pytorch_wavelet \
 
 	elif [[ $DATASET == lsun ]]; then
 		python train_wddgan.py --dataset lsun --image_size 256 --exp wddgan_lsun_exp1_wg12224_d5_recloss_500ep --num_channels 12 --num_channels_dae 64 --ch_mult 1 2 2 2 4 --num_timesteps 4 \
@@ -90,7 +101,7 @@ else
 			# --batch_size 100 --measure_time \
 
 	elif [[ $DATASET == celeba_256 ]]; then
-		python3 test_wddgan.py --dataset celeba_256 --image_size 256 --exp wddgan_celebahq_exp1_atn16_wg12224_d5_recloss_500ep --num_channels 12 --num_channels_dae 64 \
+		python test_wddgan.py --dataset celeba_256 --image_size 256 --exp wddgan_celebahq_exp1_atn16_wg12224_d5_recloss_500ep --num_channels 12 --num_channels_dae 64 \
 			--ch_mult 1 2 2 2 4 --num_timesteps 2 --num_res_blocks 2  --epoch_id 475 \
 			--current_resolution 128 --attn_resolutions 16 \
 			--net_type wavelet \
@@ -99,16 +110,26 @@ else
 			# --batch_size 100 --measure_time \
 
 	elif [[ $DATASET == celeba_512 ]]; then
-		python3 test_wddgan.py --dataset celeba_512 --image_size 512 --exp wddgan_celebahq512_exp1_atn16_wg112244_d6_recloss_400ep --num_channels 12 --num_channels_dae 64 \
+		python test_wddgan.py --dataset celeba_512 --image_size 512 --exp wddgan_celebahq512_exp1_atn16_wg112244_d6_recloss_400ep --num_channels 12 --num_channels_dae 64 \
 			--ch_mult 1 1 2 2 4 4 --num_timesteps 2 --num_res_blocks 2  --epoch_id 350 \
 			--current_resolution 256 --attn_resolutions 16 \
 			--net_type wavelet \
 			--use_pytorch_wavelet \
+			--batch_size 100 \
 			# --compute_fid --real_img_dir pytorch_fid/celebahq_512_stat.npy \
 			# --measure_time --batch_size 25 \
 
+	elif [[ $DATASET == celeba_1024 ]]; then
+		python test_wddgan.py --dataset celeba_1024 --image_size 1024 --exp wddgan_celebahq1024_exp1_wg112244_d6_recloss_400ep --num_channels 12 --num_channels_dae 64 \
+			--ch_mult 1 1 2 2 4 4 --num_timesteps 2 --num_res_blocks 2  --epoch_id 350 \
+			--current_resolution 512 --attn_resolutions 0 --patch_size 2 \
+			--net_type wavelet \
+            --batch_size 100 \
+			# --compute_fid --real_img_dir pytorch_fid/celebahq_1024_stat.npy \
+			# --measure_time --batch_size 25 \
+
 	elif [[ $DATASET == lsun ]]; then
-		python3 test_wddgan.py --dataset lsun --image_size 256 --exp wddgan_lsun_exp1_wg12224_d5_recloss_500ep --num_channels 12 --num_channels_dae 64 \
+		python test_wddgan.py --dataset lsun --image_size 256 --exp wddgan_lsun_exp1_wg12224_d5_recloss_500ep --num_channels 12 --num_channels_dae 64 \
 			--ch_mult 1 2 2 2 4  --num_timesteps 4 --num_res_blocks 2  --epoch_id 400 \
 			--current_resolution 128 --attn_resolutions 16 \
 			--net_type wavelet \
