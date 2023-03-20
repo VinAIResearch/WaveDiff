@@ -17,11 +17,11 @@ WaveDiff is a novel wavelet-based diffusion structure that employs low-and-high 
 
 Details of the model architecture and experimental results can be found in [our following paper](https://arxiv.org/abs/2211.16152):
 ```bibtex
-@article{WaveDiff,
-  title={Wavelet Diffusion Models are fast and scalable Image Generators},
-  author={Hao Phung and Quan Dao and Anh Tran},
-  journal={Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
-  year={2023}
+@inproceedings{phung2023wavediff,
+ title={Wavelet Diffusion Models are fast and scalable Image Generators},
+ author={Hao Phung and Quan Dao and Anh Tran},
+ booktitle={Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+ year= {2023}
 }
 ```
  **Please CITE** our paper whenever this repository is used to help produce published results or incorporated into other software.
@@ -48,7 +48,7 @@ For CIFAR10 and STL10, they will be automatically downloaded in the first time e
 
 For CelebA HQ (256) and LSUN, please check out [here](https://github.com/NVlabs/NVAE#set-up-file-paths-and-data) for dataset preparation.
 
-For CelebA HQ (512 & 1024), please download data at [here](https://drive.google.com/file/d/1E23HCNL-v9c54Wnzkm9yippBW8IaLUXp/view?usp=share_link) and then generate [LMDB](https://lmdb.readthedocs.io/en/release/) format dataset by [Torch Toolbox](https://github.com/PistonY/torch-toolbox#5-make-and-use-lmdb-dataset). 
+For CelebA HQ (512 & 1024), please download two zip files: [data512x512.zip](https://drive.google.com/file/d/1E23HCNL-v9c54Wnzkm9yippBW8IaLUXp/view?usp=share_link) and [data1024x1024.zip](https://drive.google.com/file/d/1-LFFkFKNuyBO1sjkM4t_AArIXr3JAOyl/view?usp=share_link) and then generate [LMDB](https://lmdb.readthedocs.io/en/release/) format dataset by [Torch Toolbox](https://github.com/PistonY/torch-toolbox#5-make-and-use-lmdb-dataset). 
 
 Once a dataset is downloaded, please put it in `data/` directory as follows:
 ```
