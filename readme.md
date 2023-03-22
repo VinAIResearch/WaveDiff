@@ -16,7 +16,6 @@
   <a href="https://www.vinai.io/">VinAI Research</a>
 </div>
 <br>
-<br>
 <div align="center">
     <img width="1000" alt="teaser" src="assets/single_wavelet.png"/>
 </div>
