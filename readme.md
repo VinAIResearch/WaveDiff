@@ -7,10 +7,20 @@
 6. [Acknowledgments](#Acknowledgments)
 7. [Contacts](#Contacts)
 
-# Official PyTorch implementation of "Wavelet Diffusion Models are fast and scalable Image Generators"
+# Official PyTorch implementation of "Wavelet Diffusion Models are fast and scalable Image Generators" [(CVPR'23)](https://arxiv.org/abs/2211.16152)
+<div align="center">
+  <a href="https://hao-pt.github.io/" target="_blank">Hao&nbsp;Phung</a> &emsp; <b>&middot;</b> &emsp;
+  <a href="https://scholar.google.com/citations?user=g0RS3_kAAAAJ&hl=en&oi=ao" target="_blank">Quan&nbsp;Dao</a> &emsp; <b>&middot;</b> &emsp;
+  <a href="https://sites.google.com/site/anhttranusc/" target="_blank">Anh&nbsp;Tran</a>
+  <br> <br>
+  <a href="https://www.vinai.io/">VinAI Research</a>
+</div>
+<br>
+<br>
 <div align="center">
     <img width="1000" alt="teaser" src="assets/single_wavelet.png"/>
 </div>
+
 
 WaveDiff is a novel wavelet-based diffusion structure that employs low-and-high frequency components of wavelet subbands from both image and feature levels. These are adaptively implemented to accelerate the sampling process while maintaining good generation quality. Experimental results on CelebA-HQ, CIFAR-10, LSUN-Church, and STL-10 datasets show that WaveDiff provides state-of-the-art training and inference speed, which serves as a stepping-stone to offering real-time and high-fidelity diffusion models.
 
