@@ -30,7 +30,7 @@ Details of the model architecture and experimental results can be found in [our 
  title={Wavelet Diffusion Models are fast and scalable Image Generators},
  author={Hao Phung and Quan Dao and Anh Tran},
  booktitle={Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
- year= {2023}
+ year={2023}
 }
 ```
  **Please CITE** our paper whenever this repository is used to help produce published results or incorporated into other software.
