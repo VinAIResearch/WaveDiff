@@ -134,7 +134,7 @@ Model performance and pretrained checkpoints are provided as below:
     <td>5.98</td>
     <td>0.39</td>
     <td>0.59</td>
-    <td><a href="https://www.dropbox.com/s/1t2emfaoveormt1/netG_350.pth?dl=0">netG_350.pth</a></td>
+    <td><a href="https://www.dropbox.com/sh/18p59gjw8dh5cto/AAB8USY8gkw-0muAG2YYe_Uka?dl=0">netG_350.pth</a></td>
   </tr>
 </table>
 
