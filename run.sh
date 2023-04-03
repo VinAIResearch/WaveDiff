@@ -124,7 +124,7 @@ else
 			--ch_mult 1 1 2 2 4 4 --num_timesteps 2 --num_res_blocks 2  --epoch_id 350 \
 			--current_resolution 512 --attn_resolutions 0 --patch_size 2 \
 			--net_type wavelet \
-            --batch_size 100 \
+            		--batch_size 100 \
 			# --compute_fid --real_img_dir pytorch_fid/celebahq_1024_stat.npy \
 			# --measure_time --batch_size 25 \
 
