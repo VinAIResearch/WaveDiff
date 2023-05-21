@@ -26,11 +26,13 @@ WaveDiff is a novel wavelet-based diffusion scheme that employs low-and-high fre
 
 Details of the model architecture and experimental results can be found in [our following paper](https://arxiv.org/abs/2211.16152):
 ```bibtex
-@inproceedings{phung2023wavediff,
- title={Wavelet Diffusion Models are fast and scalable Image Generators},
- author={Hao Phung and Quan Dao and Anh Tran},
- booktitle={Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
- year={2023}
+@InProceedings{phung2023wavediff,
+    author    = {Phung, Hao and Dao, Quan and Tran, Anh},
+    title     = {Wavelet Diffusion Models Are Fast and Scalable Image Generators},
+    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+    month     = {June},
+    year      = {2023},
+    pages     = {10199-10208}
 }
 ```
  **Please CITE** our paper whenever this repository is used to help produce published results or incorporated into other software.
