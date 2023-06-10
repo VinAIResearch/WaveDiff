@@ -14,6 +14,11 @@
   <a href="https://sites.google.com/site/anhttranusc/" target="_blank">Anh&nbsp;Tran</a>
   <br> <br>
   <a href="https://www.vinai.io/">VinAI Research</a>
+  <br> <br>
+  <a href="https://arxiv.org/abs/2211.16152">[Paper]</a> &emsp;&emsp;
+  <a href="https://drive.google.com/file/d/1LSEYfdhS4Zjtx1VRrctmVt6xjEjgmpVA/view?usp=sharing">[Poster]</a> &emsp;&emsp;
+  <a href="https://drive.google.com/file/d/11JE-RFtYJWx6XdXH8zZxgzRAvGJ6-IV2/view?usp=sharing">[Slides]</a> &emsp;&emsp;
+  <a href="https://youtu.be/KaIMMamhKsU">[Video]</a>
 </div>
 <br>
 <div align="center">
