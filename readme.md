@@ -1,11 +1,11 @@
 ##### Table of contents
-1. [Installation](#Installation)
-2. [Dataset preparation](#Dataset-preparation)
-3. [How to run](#How-to-run)
-4. [Results](#Results)
-5. [Evaluation](#Evaluation)
-6. [Acknowledgments](#Acknowledgments)
-7. [Contacts](#Contacts)
+1. [Installation](#installation)
+2. [Dataset preparation](#dataset-preparation)
+3. [How to run](#how-to-run)
+4. [Results](#results)
+5. [Evaluation](#evaluation)
+6. [Acknowledgments](#acknowledgments)
+7. [Contacts](#contacts)
 
 # Official PyTorch implementation of "Wavelet Diffusion Models are fast and scalable Image Generators" [(CVPR'23)](https://arxiv.org/abs/2211.16152)
 <div align="center">
