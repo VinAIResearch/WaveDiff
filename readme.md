@@ -64,7 +64,8 @@ For CIFAR10 and STL10, they will be automatically downloaded in the first time e
 
 For CelebA HQ (256) and LSUN, please check out [here](https://github.com/NVlabs/NVAE#set-up-file-paths-and-data) for dataset preparation.
 
-For CelebA HQ (512 & 1024), please download two zip files: [data512x512.zip](https://drive.google.com/file/d/1E23HCNL-v9c54Wnzkm9yippBW8IaLUXp/view?usp=share_link) and [data1024x1024.zip](https://drive.google.com/file/d/1-LFFkFKNuyBO1sjkM4t_AArIXr3JAOyl/view?usp=share_link) and then generate [LMDB](https://lmdb.readthedocs.io/en/release/) format dataset by [Torch Toolbox](https://github.com/PistonY/torch-toolbox#5-make-and-use-lmdb-dataset). 
+For CelebA HQ (512 & 1024), please download two zip files: [data512x512.zip](https://drive.google.com/file/d/1E23HCNL-v9c54Wnzkm9yippBW8IaLUXp/view?usp=share_link) and [data1024x1024.zip](https://drive.google.com/file/d/1-LFFkFKNuyBO1sjkM4t_AArIXr3JAOyl/view?usp=share_link) and then generate [LMDB](https://lmdb.readthedocs.io/en/release/) format dataset by [Torch Toolbox](https://github.com/PistonY/torch-toolbox#5-make-and-use-lmdb-dataset).
+> Those two links of high-res data seem to be broken so we provide our processed lmdb files at [here](https://drive.google.com/drive/folders/1d_8dhc3HFsSYTvQNN7vbDv5D_lRGHm4g?usp=sharing).
 
 Once a dataset is downloaded, please put it in `data/` directory as follows:
 ```
